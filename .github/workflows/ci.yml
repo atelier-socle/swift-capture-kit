@@ -1,0 +1,102 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Atelier Socle SAS
+
+# ci.yml — Continuous Integration for swift-capture-kit.
+#
+# Runs lint, build, test (with coverage), and platform builds.
+# Apple platforms only — no Linux, no tvOS, no watchOS.
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------- Lint ----------
+  lint:
+    name: "Lint"
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SwiftLint
+        run: brew install swiftlint
+      - name: Install swift-format
+        run: brew install swift-format
+      - name: SwiftLint
+        run: swiftlint lint --strict
+      - name: swift-format
+        run: swift-format lint -r Sources/ Tests/
+
+  # ---------- Build & Test (macOS) ----------
+  build-and-test:
+    name: "macOS (Swift 6.2)"
+    runs-on: macos-26
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app
+      - name: Swift Version
+        run: swift --version
+      - name: Build
+        run: swift build
+      - name: Test with Coverage
+        timeout-minutes: 15
+        run: swift test --enable-code-coverage
+      - name: Coverage Report
+        run: |
+          PROF_DATA=$(find .build -name "default.profdata" -type f | head -1)
+          TEST_BIN=$(find .build -name "swift-capture-kitPackageTests" -type f ! -name "*.o" -not -path "*.dSYM*" | head -1)
+          if [ -n "$PROF_DATA" ] && [ -n "$TEST_BIN" ]; then
+            xcrun llvm-cov report "$TEST_BIN" \
+              -instr-profile="$PROF_DATA" \
+              -ignore-filename-regex='\.build|Tests'
+          fi
+      - name: Generate lcov Coverage
+        run: |
+          PROF_DATA=$(find .build -name "default.profdata" -type f | head -1)
+          TEST_BIN=$(find .build -name "swift-capture-kitPackageTests" -type f ! -name "*.o" -not -path "*.dSYM*" | head -1)
+          if [ -n "$PROF_DATA" ] && [ -n "$TEST_BIN" ]; then
+            xcrun llvm-cov export "$TEST_BIN" \
+              -instr-profile="$PROF_DATA" \
+              -format=lcov \
+              -ignore-filename-regex='\.build|Tests' \
+              > coverage.lcov
+          fi
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.lcov
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  # ---------- Platform Builds (library only) ----------
+  platform-builds:
+    name: "${{ matrix.platform }}"
+    runs-on: macos-26
+    needs: lint
+    strategy:
+      matrix:
+        include:
+          - platform: iOS
+            destination: "generic/platform=iOS Simulator"
+          - platform: visionOS
+            destination: "generic/platform=visionOS Simulator"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.2.app
+      - name: Build for ${{ matrix.platform }}
+        run: |
+          xcodebuild build \
+            -scheme swift-capture-kit \
+            -destination "${{ matrix.destination }}" \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO
