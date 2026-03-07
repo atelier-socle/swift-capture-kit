@@ -51,6 +51,11 @@ public actor FileVideoSource: VideoSource {
     /// The file reader used for video file reading.
     private let fileReader: any VideoFileReaderProviding
 
+    /// Frame statistics tracking.
+    private let statsAnalyzer = VideoFrameAnalyzer()
+    private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
+    private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
+
     /// Cached file duration in seconds.
     public private(set) var fileDuration: TimeInterval = 0.0
 
@@ -72,6 +77,9 @@ public actor FileVideoSource: VideoSource {
         self.endTime = nil
         self.includeAudio = false
         self.configuration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
         self.fileReader = SystemVideoFileReader()
     }
 
@@ -90,6 +98,9 @@ public actor FileVideoSource: VideoSource {
         self.endTime = nil
         self.includeAudio = false
         self.configuration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
         self.fileReader = fileReader
     }
 
@@ -123,6 +134,7 @@ public actor FileVideoSource: VideoSource {
         }
 
         isCapturing = true
+        await statsAnalyzer.start()
         let format = makeFormat(from: configuration)
         self.activeFormat = format
 
@@ -137,6 +149,9 @@ public actor FileVideoSource: VideoSource {
             loop: loop
         )
 
+        let analyzer = statsAnalyzer
+        let statsContinuation = _frameStatisticsContinuation
+
         return AsyncStream { continuation in
             let task = Task {
                 var seq: Int64 = 0
@@ -149,6 +164,10 @@ public actor FileVideoSource: VideoSource {
                         sequenceNumber: seq
                     )
                     continuation.yield(frame)
+                    await analyzer.processFrame(frame)
+                    if let latest = await analyzer.latestMetrics {
+                        statsContinuation.yield(latest)
+                    }
                     seq += 1
                 }
                 continuation.finish()
@@ -161,13 +180,12 @@ public actor FileVideoSource: VideoSource {
     public func stopCapture() async {
         await fileReader.stop()
         isCapturing = false
+        await statsAnalyzer.stop()
     }
 
-    /// An async stream of frame statistics. Always finishes immediately.
+    /// An async stream of real-time frame statistics.
     public nonisolated var frameStatistics: AsyncStream<FrameStatisticsSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _frameStatisticsStream
     }
 
     /// File duration in seconds.

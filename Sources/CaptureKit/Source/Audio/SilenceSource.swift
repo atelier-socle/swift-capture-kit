@@ -30,6 +30,11 @@ public actor SilenceSource: AudioSource {
     /// The current configuration used for silence generation.
     private var configuration: AudioSourceConfiguration
 
+    /// Audio level metering.
+    private let audioMeter = AudioMeter()
+    private let _audioLevelStream: AsyncStream<AudioLevelSample>
+    private let _audioLevelContinuation: AsyncStream<AudioLevelSample>.Continuation
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [
@@ -47,6 +52,9 @@ public actor SilenceSource: AudioSource {
     public init(format: AudioSourceConfiguration = .default) {
         self.sourceID = "silence-\(UUID().uuidString.prefix(8))"
         self.configuration = format
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
+        self._audioLevelStream = stream
+        self._audioLevelContinuation = continuation
     }
 
     /// Configures this source with the given audio source configuration.
@@ -75,6 +83,7 @@ public actor SilenceSource: AudioSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
+        await audioMeter.start()
 
         let config = self.configuration
         let format = AudioFormat(
@@ -88,6 +97,16 @@ public actor SilenceSource: AudioSource {
         let samplesPerBuffer = Int(config.sampleRate.rawValue * config.preferredBufferDuration)
         let bytesPerSample = config.bitDepth.byteSize
         let bufferSize = samplesPerBuffer * config.channelCount * bytesPerSample
+
+        let meter = audioMeter
+        let levelContinuation = _audioLevelContinuation
+        let meterLevels = await meter.levels
+
+        let forwardTask = Task {
+            for await level in meterLevels {
+                levelContinuation.yield(level)
+            }
+        }
 
         return AsyncStream { continuation in
             let task = Task { @concurrent in
@@ -103,15 +122,18 @@ public actor SilenceSource: AudioSource {
                         sequenceNumber: sequenceNumber
                     )
                     continuation.yield(buffer)
+                    await meter.processBuffer(buffer)
                     sequenceNumber += 1
 
                     try? await Task.sleep(for: .seconds(sleepDuration))
                 }
                 continuation.finish()
+                forwardTask.cancel()
             }
 
             continuation.onTermination = { _ in
                 task.cancel()
+                forwardTask.cancel()
             }
         }
     }
@@ -119,12 +141,11 @@ public actor SilenceSource: AudioSource {
     /// Stops generating silent audio buffers.
     public func stopCapture() async {
         isCapturing = false
+        await audioMeter.stop()
     }
 
-    /// An async stream of audio level samples. Always finishes immediately for silence.
+    /// An async stream of real-time audio level samples.
     public nonisolated var audioLevel: AsyncStream<AudioLevelSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _audioLevelStream
     }
 }

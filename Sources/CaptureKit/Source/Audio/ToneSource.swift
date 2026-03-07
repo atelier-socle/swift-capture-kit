@@ -66,6 +66,11 @@ public actor ToneSource: AudioSource {
     /// The current configuration used for tone generation.
     private var configuration: AudioSourceConfiguration
 
+    /// Audio level metering.
+    private let audioMeter = AudioMeter()
+    private let _audioLevelStream: AsyncStream<AudioLevelSample>
+    private let _audioLevelContinuation: AsyncStream<AudioLevelSample>.Continuation
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [makeFormat(from: configuration)]
@@ -89,6 +94,9 @@ public actor ToneSource: AudioSource {
         self.frequency = frequency
         self.amplitude = amplitude
         self.configuration = format
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
+        self._audioLevelStream = stream
+        self._audioLevelContinuation = continuation
     }
 
     /// Configures this source with the given audio source configuration.
@@ -112,6 +120,7 @@ public actor ToneSource: AudioSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
+        await audioMeter.start()
 
         let config = self.configuration
         let format = makeFormat(from: config)
@@ -125,6 +134,16 @@ public actor ToneSource: AudioSource {
         let frequency = self.frequency
         let amplitude = self.amplitude
 
+        let meter = audioMeter
+        let levelContinuation = _audioLevelContinuation
+        let meterLevels = await meter.levels
+
+        let forwardTask = Task {
+            for await level in meterLevels {
+                levelContinuation.yield(level)
+            }
+        }
+
         return AsyncStream { continuation in
             let task = Task { @concurrent in
                 var sequenceNumber: Int64 = 0
@@ -132,25 +151,12 @@ public actor ToneSource: AudioSource {
                 let sleepDuration = config.preferredBufferDuration
 
                 while !Task.isCancelled {
-                    var data = Data(count: samplesPerBuffer * channelCount * bytesPerSample)
-
-                    data.withUnsafeMutableBytes { rawBuffer in
-                        let floatBuffer = rawBuffer.bindMemory(to: Float.self)
-                        for sampleIndex in 0..<samplesPerBuffer {
-                            let phase = fmod(
-                                Double(globalSampleIndex + Int64(sampleIndex)) * frequency / sampleRate,
-                                1.0
-                            )
-                            let sample = ToneSource.generateSample(
-                                waveform: waveform,
-                                phase: phase,
-                                amplitude: amplitude
-                            )
-                            for channel in 0..<channelCount {
-                                floatBuffer[sampleIndex * channelCount + channel] = sample
-                            }
-                        }
-                    }
+                    let data = ToneSource.generateBuffer(
+                        waveform: waveform, frequency: frequency, amplitude: amplitude,
+                        sampleRate: sampleRate, samplesPerBuffer: samplesPerBuffer,
+                        channelCount: channelCount, bytesPerSample: bytesPerSample,
+                        globalSampleIndex: globalSampleIndex
+                    )
 
                     let buffer = AudioBuffer(
                         data: data,
@@ -160,16 +166,19 @@ public actor ToneSource: AudioSource {
                         sequenceNumber: sequenceNumber
                     )
                     continuation.yield(buffer)
+                    await meter.processBuffer(buffer)
                     sequenceNumber += 1
                     globalSampleIndex += Int64(samplesPerBuffer)
 
                     try? await Task.sleep(for: .seconds(sleepDuration))
                 }
                 continuation.finish()
+                forwardTask.cancel()
             }
 
             continuation.onTermination = { _ in
                 task.cancel()
+                forwardTask.cancel()
             }
         }
     }
@@ -177,13 +186,12 @@ public actor ToneSource: AudioSource {
     /// Stops generating tone audio buffers.
     public func stopCapture() async {
         isCapturing = false
+        await audioMeter.stop()
     }
 
-    /// An async stream of audio level samples. Always finishes immediately for the tone source.
+    /// An async stream of real-time audio level samples.
     public nonisolated var audioLevel: AsyncStream<AudioLevelSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _audioLevelStream
     }
 
     private func makeFormat(from config: AudioSourceConfiguration) -> AudioFormat {
@@ -193,6 +201,29 @@ public actor ToneSource: AudioSource {
             channelLayout: config.channelLayout,
             bitDepth: config.bitDepth
         )
+    }
+
+    private static func generateBuffer(
+        waveform: ToneWaveform, frequency: Double, amplitude: Float,
+        sampleRate: Double, samplesPerBuffer: Int,
+        channelCount: Int, bytesPerSample: Int,
+        globalSampleIndex: Int64
+    ) -> Data {
+        var data = Data(count: samplesPerBuffer * channelCount * bytesPerSample)
+        data.withUnsafeMutableBytes { rawBuffer in
+            let floatBuffer = rawBuffer.bindMemory(to: Float.self)
+            for sampleIndex in 0..<samplesPerBuffer {
+                let phase = fmod(
+                    Double(globalSampleIndex + Int64(sampleIndex)) * frequency / sampleRate,
+                    1.0
+                )
+                let sample = generateSample(waveform: waveform, phase: phase, amplitude: amplitude)
+                for channel in 0..<channelCount {
+                    floatBuffer[sampleIndex * channelCount + channel] = sample
+                }
+            }
+        }
+        return data
     }
 
     /// Generates a single audio sample for the given waveform, phase, and amplitude.

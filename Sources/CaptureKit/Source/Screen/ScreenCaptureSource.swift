@@ -76,6 +76,14 @@ public actor ScreenCaptureSource: VideoSource {
     /// The current video source configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// The screen capture video provider (DI — defaults to platform-specific).
+    private let videoProvider: any ScreenCaptureVideoProviding
+
+    /// Frame statistics tracking.
+    private let statsAnalyzer = VideoFrameAnalyzer()
+    private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
+    private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -90,6 +98,46 @@ public actor ScreenCaptureSource: VideoSource {
         self.configuration = .default
         self.screenCaptureKitConfiguration = .default
         self.replayKitConfiguration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
+
+        switch mode {
+        case .screenCaptureKit:
+            self.displayName = "Screen Capture (macOS)"
+            self.broadcastConfiguration = nil
+        case .replayKit:
+            self.displayName = "Screen Recording (In-App)"
+            self.broadcastConfiguration = nil
+        case .broadcastExtension(let appGroupID):
+            self.displayName = "Screen Broadcast"
+            self.broadcastConfiguration = BroadcastConfiguration(appGroupID: appGroupID)
+        }
+
+        #if canImport(ScreenCaptureKit) && os(macOS)
+            self.videoProvider = SCStreamVideoProvider()
+        #elseif canImport(ReplayKit) && os(iOS)
+            self.videoProvider = ReplayKitVideoProvider()
+        #else
+            self.videoProvider = NoOpScreenCaptureVideoProvider()
+        #endif
+    }
+
+    /// Creates a new screen capture source with an injected video provider (for testing).
+    ///
+    /// - Parameters:
+    ///   - mode: The screen capture mode.
+    ///   - videoProvider: The video provider to use.
+    init(mode: ScreenCaptureMode, videoProvider: any ScreenCaptureVideoProviding) {
+        self.sourceID = "screen-\(UUID().uuidString.prefix(8))"
+        self.mode = mode
+        self.configuration = .default
+        self.screenCaptureKitConfiguration = .default
+        self.replayKitConfiguration = .default
+        self.videoProvider = videoProvider
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
 
         switch mode {
         case .screenCaptureKit:
@@ -154,22 +202,50 @@ public actor ScreenCaptureSource: VideoSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
+        await statsAnalyzer.start()
+
+        let config = self.configuration
+        self.activeFormat = makeFormat(from: config)
+
+        let stream = try await videoProvider.startCapture(mode: mode)
+
+        let analyzer = statsAnalyzer
+        let statsContinuation = _frameStatisticsContinuation
 
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let frame = VideoFrame(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        isKeyFrame: sample.isKeyFrame,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(frame)
+                    await analyzer.processFrame(frame)
+                    if let latest = await analyzer.latestMetrics {
+                        statsContinuation.yield(latest)
+                    }
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops the current screen capture.
     public func stopCapture() async {
+        await videoProvider.stopCapture()
         isCapturing = false
+        await statsAnalyzer.stop()
     }
 
-    /// An async stream of frame statistics. Always finishes immediately.
+    /// An async stream of real-time frame statistics.
     public nonisolated var frameStatistics: AsyncStream<FrameStatisticsSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _frameStatisticsStream
     }
 
     /// Discover available screen capture content (macOS only).

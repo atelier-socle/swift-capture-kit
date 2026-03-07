@@ -36,6 +36,11 @@ public actor BlackSource: VideoSource {
     /// The current configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// Frame statistics tracking.
+    private let statsAnalyzer = VideoFrameAnalyzer()
+    private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
+    private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -50,6 +55,9 @@ public actor BlackSource: VideoSource {
         self.sourceID = "black-\(UUID().uuidString.prefix(8))"
         self.resolution = resolution
         self.frameRate = frameRate
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
         self.configuration = VideoSourceConfiguration(
             resolution: resolution,
             frameRate: frameRate,
@@ -86,11 +94,14 @@ public actor BlackSource: VideoSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
+        await statsAnalyzer.start()
 
         let format = makeFormat(from: configuration)
         self.activeFormat = format
         let frameSize = resolution.width * resolution.height * 4
         let frameDuration = 1.0 / frameRate.value
+        let analyzer = statsAnalyzer
+        let statsContinuation = _frameStatisticsContinuation
 
         return AsyncStream { continuation in
             let task = Task { @concurrent in
@@ -105,6 +116,10 @@ public actor BlackSource: VideoSource {
                         sequenceNumber: sequenceNumber
                     )
                     continuation.yield(frame)
+                    await analyzer.processFrame(frame)
+                    if let latest = await analyzer.latestMetrics {
+                        statsContinuation.yield(latest)
+                    }
                     sequenceNumber += 1
                     try? await Task.sleep(for: .seconds(frameDuration))
                 }
@@ -120,13 +135,12 @@ public actor BlackSource: VideoSource {
     /// Stops generating black video frames.
     public func stopCapture() async {
         isCapturing = false
+        await statsAnalyzer.stop()
     }
 
-    /// An async stream of frame statistics. Always finishes immediately.
+    /// An async stream of real-time frame statistics.
     public nonisolated var frameStatistics: AsyncStream<FrameStatisticsSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _frameStatisticsStream
     }
 
     private func makeFormat(from config: VideoSourceConfiguration) -> VideoFormat {

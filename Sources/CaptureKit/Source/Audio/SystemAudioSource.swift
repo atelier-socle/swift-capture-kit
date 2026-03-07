@@ -58,6 +58,11 @@ public actor SystemAudioSource: AudioSource {
     /// The screen capture audio provider (DI — defaults to real SCStream).
     private let audioProvider: any ScreenCaptureAudioProviding
 
+    /// Audio level metering.
+    private let audioMeter = AudioMeter()
+    private let _audioLevelStream: AsyncStream<AudioLevelSample>
+    private let _audioLevelContinuation: AsyncStream<AudioLevelSample>.Continuation
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [
@@ -78,6 +83,9 @@ public actor SystemAudioSource: AudioSource {
         self.captureMode = mode
         self.excludeOwnApp = true
         self.configuration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
+        self._audioLevelStream = stream
+        self._audioLevelContinuation = continuation
         #if canImport(ScreenCaptureKit)
             self.audioProvider = SCStreamAudioProvider()
         #else
@@ -98,6 +106,9 @@ public actor SystemAudioSource: AudioSource {
         self.captureMode = mode
         self.excludeOwnApp = true
         self.configuration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
+        self._audioLevelStream = stream
+        self._audioLevelContinuation = continuation
         self.audioProvider = audioProvider
     }
 
@@ -127,6 +138,7 @@ public actor SystemAudioSource: AudioSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
+        await audioMeter.start()
 
         let config = configuration
         let format = AudioFormat(
@@ -142,6 +154,16 @@ public actor SystemAudioSource: AudioSource {
             excludeOwnApp: excludeOwnApp
         )
 
+        let meter = audioMeter
+        let levelContinuation = _audioLevelContinuation
+        let meterLevels = await meter.levels
+
+        let forwardTask = Task {
+            for await level in meterLevels {
+                levelContinuation.yield(level)
+            }
+        }
+
         return AsyncStream { continuation in
             let task = Task {
                 var seq: Int64 = 0
@@ -154,11 +176,16 @@ public actor SystemAudioSource: AudioSource {
                         sequenceNumber: seq
                     )
                     continuation.yield(buffer)
+                    await meter.processBuffer(buffer)
                     seq += 1
                 }
                 continuation.finish()
+                forwardTask.cancel()
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { _ in
+                task.cancel()
+                forwardTask.cancel()
+            }
         }
     }
 
@@ -166,12 +193,11 @@ public actor SystemAudioSource: AudioSource {
     public func stopCapture() async {
         await audioProvider.stopCapture()
         isCapturing = false
+        await audioMeter.stop()
     }
 
-    /// An async stream of audio level samples. Finishes immediately when hardware is unavailable.
+    /// An async stream of real-time audio level samples.
     public nonisolated var audioLevel: AsyncStream<AudioLevelSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _audioLevelStream
     }
 }

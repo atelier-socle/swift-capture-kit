@@ -36,6 +36,11 @@ public actor TestPatternSource: VideoSource {
     /// The current configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// Frame statistics tracking.
+    private let statsAnalyzer = VideoFrameAnalyzer()
+    private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
+    private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -55,6 +60,9 @@ public actor TestPatternSource: VideoSource {
         self.sourceID = "pattern-\(UUID().uuidString.prefix(8))"
         self.pattern = pattern
         self.resolution = resolution
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
         self.configuration = VideoSourceConfiguration(
             resolution: resolution,
             frameRate: frameRate,
@@ -90,6 +98,7 @@ public actor TestPatternSource: VideoSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
+        await statsAnalyzer.start()
 
         let format = makeFormat(from: configuration)
         self.activeFormat = format
@@ -97,6 +106,8 @@ public actor TestPatternSource: VideoSource {
         let height = resolution.height
         let frameDuration = 1.0 / configuration.frameRate.value
         let pattern = self.pattern
+        let analyzer = statsAnalyzer
+        let statsContinuation = _frameStatisticsContinuation
 
         return AsyncStream { continuation in
             let task = Task { @concurrent in
@@ -114,6 +125,10 @@ public actor TestPatternSource: VideoSource {
                         sequenceNumber: sequenceNumber
                     )
                     continuation.yield(frame)
+                    await analyzer.processFrame(frame)
+                    if let latest = await analyzer.latestMetrics {
+                        statsContinuation.yield(latest)
+                    }
                     sequenceNumber += 1
                     try? await Task.sleep(for: .seconds(frameDuration))
                 }
@@ -129,13 +144,12 @@ public actor TestPatternSource: VideoSource {
     /// Stops generating test pattern video frames.
     public func stopCapture() async {
         isCapturing = false
+        await statsAnalyzer.stop()
     }
 
-    /// An async stream of frame statistics. Always finishes immediately.
+    /// An async stream of real-time frame statistics.
     public nonisolated var frameStatistics: AsyncStream<FrameStatisticsSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _frameStatisticsStream
     }
 
     private func makeFormat(from config: VideoSourceConfiguration) -> VideoFormat {

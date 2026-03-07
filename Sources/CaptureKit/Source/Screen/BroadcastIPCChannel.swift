@@ -103,10 +103,64 @@ public actor BroadcastIPCChannel {
 
     /// Read incoming sample buffers from the extension.
     ///
+    /// Polls the shared App Group container for buffer files written by BroadcastRelay.
+    ///
     /// - Returns: An asynchronous stream of broadcast samples.
     public func incomingBuffers() -> AsyncStream<BroadcastSample> {
-        AsyncStream { continuation in
-            continuation.finish()
+        let groupID = appGroupID
+        let connected = { @Sendable [weak self] in await self?.isConnected ?? false }
+
+        return AsyncStream { continuation in
+            let task = Task { @concurrent in
+                var sequenceNumber: Int64 = 0
+
+                while !Task.isCancelled {
+                    guard await connected() else { break }
+
+                    guard
+                        let containerURL = FileManager.default.containerURL(
+                            forSecurityApplicationGroupIdentifier: groupID)
+                    else {
+                        try? await Task.sleep(for: .milliseconds(10))
+                        continue
+                    }
+
+                    let files =
+                        (try? FileManager.default.contentsOfDirectory(
+                            at: containerURL,
+                            includingPropertiesForKeys: [.contentModificationDateKey]
+                        )) ?? []
+
+                    let bufferFiles = files.filter {
+                        $0.pathExtension == "buf"
+                    }.sorted {
+                        $0.lastPathComponent < $1.lastPathComponent
+                    }
+
+                    for file in bufferFiles {
+                        guard let data = try? Data(contentsOf: file) else {
+                            continue
+                        }
+                        let name = file.deletingPathExtension().lastPathComponent
+                        let sampleType = parseSampleType(from: name)
+                        let timestamp = parseTimestamp(from: name)
+
+                        let sample = BroadcastSample(
+                            sampleType: sampleType,
+                            data: data,
+                            timestamp: timestamp,
+                            sequenceNumber: sequenceNumber
+                        )
+                        continuation.yield(sample)
+                        sequenceNumber += 1
+                        try? FileManager.default.removeItem(at: file)
+                    }
+
+                    try? await Task.sleep(for: .milliseconds(10))
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -121,5 +175,31 @@ public actor BroadcastIPCChannel {
                 reason: "IPC channel is not connected"
             )
         }
+
+        guard
+            let containerURL = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: appGroupID)
+        else { return }
+
+        let controlFile = containerURL.appendingPathComponent(
+            "control_\(message.rawValue).msg")
+        try? Data(message.rawValue.utf8).write(to: controlFile, options: .atomic)
+    }
+
+    // MARK: - Private
+
+    private nonisolated func parseSampleType(from name: String) -> BroadcastSampleType {
+        if name.hasPrefix("video") { return .video }
+        if name.hasPrefix("audioApp") { return .audioApp }
+        if name.hasPrefix("audioMic") { return .audioMic }
+        return .video
+    }
+
+    private nonisolated func parseTimestamp(from name: String) -> TimeInterval {
+        let parts = name.split(separator: "_")
+        if parts.count >= 2, let ms = Int(parts[1]) {
+            return TimeInterval(ms) / 1000.0
+        }
+        return 0.0
     }
 }

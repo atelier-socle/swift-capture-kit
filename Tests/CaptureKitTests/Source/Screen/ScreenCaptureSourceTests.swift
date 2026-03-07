@@ -70,53 +70,87 @@ struct ScreenCaptureSourceTests {
     @Test("configure while capturing throws")
     func configureWhileCapturingThrows() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
-        #if os(macOS)
-            let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
+        let provider = MockScreenCaptureVideoProvider()
+        let mode = ScreenCaptureMode.screenCaptureKit(.display(displayID: 1))
+        let source = ScreenCaptureSource(mode: mode, videoProvider: provider)
+        _ = try await source.startCapture()
+        await #expect(throws: CaptureError.self) {
             try await source.configure(.default)
-            _ = try await source.startCapture()
-            await #expect(throws: CaptureError.self) {
-                try await source.configure(.default)
-            }
-            await source.stopCapture()
-        #endif
+        }
+        await source.stopCapture()
     }
 
     @Test("startCapture sets isCapturing to true")
     func startCaptureSetsIsCapturingToTrue() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
-        #if os(macOS)
-            let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
-            try await source.configure(.default)
-            _ = try await source.startCapture()
-            #expect(await source.isCapturing == true)
-            await source.stopCapture()
-        #endif
+        let provider = MockScreenCaptureVideoProvider()
+        let mode = ScreenCaptureMode.screenCaptureKit(.display(displayID: 1))
+        let source = ScreenCaptureSource(mode: mode, videoProvider: provider)
+        _ = try await source.startCapture()
+        #expect(await source.isCapturing == true)
+        await source.stopCapture()
     }
 
     @Test("startCapture while capturing throws")
     func startCaptureWhileCapturingThrows() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
-        #if os(macOS)
-            let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
-            try await source.configure(.default)
-            _ = try await source.startCapture()
-            await #expect(throws: CaptureError.self) {
-                try await source.startCapture()
-            }
-            await source.stopCapture()
-        #endif
+        let provider = MockScreenCaptureVideoProvider()
+        let mode = ScreenCaptureMode.screenCaptureKit(.display(displayID: 1))
+        let source = ScreenCaptureSource(mode: mode, videoProvider: provider)
+        _ = try await source.startCapture()
+        await #expect(throws: CaptureError.self) {
+            try await source.startCapture()
+        }
+        await source.stopCapture()
     }
 
     @Test("stopCapture sets isCapturing to false")
     func stopCaptureSetsIsCapturingToFalse() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
-        #if os(macOS)
-            let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
-            try await source.configure(.default)
-            _ = try await source.startCapture()
-            await source.stopCapture()
-            #expect(await source.isCapturing == false)
-        #endif
+        let provider = MockScreenCaptureVideoProvider()
+        let mode = ScreenCaptureMode.screenCaptureKit(.display(displayID: 1))
+        let source = ScreenCaptureSource(mode: mode, videoProvider: provider)
+        _ = try await source.startCapture()
+        await source.stopCapture()
+        #expect(await source.isCapturing == false)
+    }
+
+    @Test("startCapture produces video frames from provider")
+    func startCaptureProducesVideoFrames() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let provider = MockScreenCaptureVideoProvider()
+        let format = VideoFormat(
+            resolution: .p1080, frameRate: .fps30, pixelFormat: .bgra,
+            colorSpace: .srgb, dynamicRange: .sdr)
+        await provider.setSyntheticSamples([
+            CapturedVideoSample(
+                data: Data(count: 1920 * 1080 * 4),
+                timestamp: 0.0, format: format, isKeyFrame: true),
+            CapturedVideoSample(
+                data: Data(count: 1920 * 1080 * 4),
+                timestamp: 0.033, format: format, isKeyFrame: true)
+        ])
+        let mode = ScreenCaptureMode.screenCaptureKit(.display(displayID: 1))
+        let source = ScreenCaptureSource(mode: mode, videoProvider: provider)
+        let stream = try await source.startCapture()
+        var count = 0
+        for await _ in stream {
+            count += 1
+        }
+        #expect(count == 2)
+        await source.stopCapture()
+    }
+
+    @Test("stopCapture calls provider stopCapture")
+    func stopCaptureCallsProviderStop() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let provider = MockScreenCaptureVideoProvider()
+        let mode = ScreenCaptureMode.screenCaptureKit(.display(displayID: 1))
+        let source = ScreenCaptureSource(mode: mode, videoProvider: provider)
+        _ = try await source.startCapture()
+        await source.stopCapture()
+        let stopCount = await provider.stopCallCount
+        #expect(stopCount == 1)
     }
 
     @Test("replayKit mode throws on macOS")
@@ -157,5 +191,11 @@ struct ScreenCaptureSourceTests {
             let availability = source.availability
             #expect(availability.requiredPermissions.contains(.screenRecording))
         #endif
+    }
+}
+
+extension MockScreenCaptureVideoProvider {
+    func setSyntheticSamples(_ samples: [CapturedVideoSample]) {
+        self.syntheticSamples = samples
     }
 }

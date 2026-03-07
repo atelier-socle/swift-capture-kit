@@ -44,6 +44,11 @@ public actor ExternalCameraSource: VideoSource {
     /// The capture engine used for video capture.
     private let captureEngine: any VideoCaptureProviding
 
+    /// Frame statistics tracking.
+    private let statsAnalyzer = VideoFrameAnalyzer()
+    private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
+    private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -58,6 +63,9 @@ public actor ExternalCameraSource: VideoSource {
         self.selectedDevice = device
         self.continuityCameraFeatures = nil
         self.configuration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
         #if os(visionOS)
             self.captureEngine = VisionOSVideoCaptureEngine()
         #else
@@ -76,6 +84,9 @@ public actor ExternalCameraSource: VideoSource {
         self.selectedDevice = device
         self.continuityCameraFeatures = nil
         self.configuration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
         self.captureEngine = captureEngine
     }
 
@@ -100,6 +111,7 @@ public actor ExternalCameraSource: VideoSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
+        await statsAnalyzer.start()
         let config = self.configuration
         self.activeFormat = makeFormat(from: config)
 
@@ -108,6 +120,9 @@ public actor ExternalCameraSource: VideoSource {
             position: .unspecified,
             deviceType: .externalUnknown
         )
+
+        let analyzer = statsAnalyzer
+        let statsContinuation = _frameStatisticsContinuation
 
         return AsyncStream { continuation in
             let task = Task {
@@ -121,6 +136,10 @@ public actor ExternalCameraSource: VideoSource {
                         sequenceNumber: seq
                     )
                     continuation.yield(frame)
+                    await analyzer.processFrame(frame)
+                    if let latest = await analyzer.latestMetrics {
+                        statsContinuation.yield(latest)
+                    }
                     seq += 1
                 }
                 continuation.finish()
@@ -133,13 +152,12 @@ public actor ExternalCameraSource: VideoSource {
     public func stopCapture() async {
         await captureEngine.stopCapture()
         isCapturing = false
+        await statsAnalyzer.stop()
     }
 
-    /// An async stream of frame statistics. Always finishes immediately.
+    /// An async stream of real-time frame statistics.
     public nonisolated var frameStatistics: AsyncStream<FrameStatisticsSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _frameStatisticsStream
     }
 
     private func makeFormat(from config: VideoSourceConfiguration) -> VideoFormat {

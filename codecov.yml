@@ -20,3 +20,9 @@ ignore:
   - "Sources/CaptureKit/Source/Video/SystemVideoCaptureEngine.swift"
   - "Sources/CaptureKit/Source/Video/SystemVideoFileReader.swift"
   - "Sources/CaptureKit/Encoder/Video/VideoToolboxEncoder.swift"
+  # Session 13 — Real screen capture implementations (require hardware/permissions)
+  - "Sources/CaptureKit/Source/Screen/SCStreamVideoProvider.swift"
+  - "Sources/CaptureKit/Source/Screen/ReplayKitVideoProvider.swift"
+  # Session 13 — SwiftUI views (require UI testing)
+  - "Sources/CaptureKit/Permission/UI/CapturePermissionView.swift"
+  - "Sources/CaptureKit/Permission/UI/CapturePermissionModifier.swift"

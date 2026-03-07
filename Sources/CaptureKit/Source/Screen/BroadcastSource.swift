@@ -44,6 +44,11 @@ public actor BroadcastSource: VideoSource {
     /// The current video source configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// Frame statistics tracking.
+    private let statsAnalyzer = VideoFrameAnalyzer()
+    private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
+    private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -60,6 +65,9 @@ public actor BroadcastSource: VideoSource {
             maxBufferSize: configuration.maxBufferSize
         )
         self.configuration = .default
+        let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
+        self._frameStatisticsStream = stream
+        self._frameStatisticsContinuation = continuation
     }
 
     /// Configures this source with the given video source configuration.
@@ -85,23 +93,56 @@ public actor BroadcastSource: VideoSource {
 
         try await ipcChannel.connect()
         isCapturing = true
+        await statsAnalyzer.start()
+
+        let config = self.configuration
+        self.activeFormat = makeFormat(from: config)
+
+        let incoming = await ipcChannel.incomingBuffers()
+        let analyzer = statsAnalyzer
+        let statsContinuation = _frameStatisticsContinuation
 
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in incoming {
+                    guard sample.sampleType == .video else { continue }
+                    let frame = VideoFrame(
+                        data: sample.data,
+                        format: VideoFormat(
+                            resolution: config.resolution,
+                            frameRate: config.frameRate,
+                            pixelFormat: config.pixelFormat,
+                            colorSpace: config.colorSpace,
+                            dynamicRange: config.dynamicRange
+                        ),
+                        timestamp: sample.timestamp,
+                        isKeyFrame: true,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(frame)
+                    await analyzer.processFrame(frame)
+                    if let latest = await analyzer.latestMetrics {
+                        statsContinuation.yield(latest)
+                    }
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops the current broadcast capture.
     public func stopCapture() async {
-        isCapturing = false
         await ipcChannel.disconnect()
+        isCapturing = false
+        await statsAnalyzer.stop()
     }
 
-    /// An async stream of frame statistics. Always finishes immediately.
+    /// An async stream of real-time frame statistics.
     public nonisolated var frameStatistics: AsyncStream<FrameStatisticsSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _frameStatisticsStream
     }
 
     private func makeFormat(from config: VideoSourceConfiguration) -> VideoFormat {

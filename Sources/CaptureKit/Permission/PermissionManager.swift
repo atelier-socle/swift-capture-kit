@@ -3,6 +3,13 @@
 
 import Foundation
 
+#if canImport(AVFoundation)
+    @preconcurrency import AVFoundation
+#endif
+#if os(macOS)
+    import CoreGraphics
+#endif
+
 /// A permission status change event.
 public struct PermissionChange: Sendable, Equatable {
     /// The permission type that changed.
@@ -82,7 +89,7 @@ public actor PermissionManager {
     public func request(_ type: PermissionType) async -> PermissionStatus {
         let current = await status(for: type)
         guard current == .notDetermined else { return current }
-        let result: PermissionStatus = .notDetermined
+        let result = await requestSystemPermission(for: type)
         cachedStatuses[type] = result
         emitChange(
             PermissionChange(
@@ -129,8 +136,72 @@ public actor PermissionManager {
     private func querySystemStatus(
         for type: PermissionType
     ) async -> PermissionStatus {
-        .notDetermined
+        #if canImport(AVFoundation)
+            switch type {
+            case .microphone:
+                return mapAVAuthorizationStatus(
+                    AVCaptureDevice.authorizationStatus(for: .audio)
+                )
+            case .camera:
+                return mapAVAuthorizationStatus(
+                    AVCaptureDevice.authorizationStatus(for: .video)
+                )
+            case .screenRecording:
+                #if os(macOS)
+                    if CGPreflightScreenCaptureAccess() {
+                        return .authorized
+                    }
+                    return .notDetermined
+                #else
+                    return .notDetermined
+                #endif
+            case .photoLibrary, .mediaLibrary, .bluetooth:
+                return .notDetermined
+            }
+        #else
+            return .notDetermined
+        #endif
     }
+
+    private func requestSystemPermission(
+        for type: PermissionType
+    ) async -> PermissionStatus {
+        #if canImport(AVFoundation)
+            switch type {
+            case .microphone:
+                let granted = await AVCaptureDevice.requestAccess(for: .audio)
+                return granted ? .authorized : .denied
+            case .camera:
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
+                return granted ? .authorized : .denied
+            case .screenRecording:
+                #if os(macOS)
+                    let granted = CGRequestScreenCaptureAccess()
+                    return granted ? .authorized : .denied
+                #else
+                    return .notDetermined
+                #endif
+            case .photoLibrary, .mediaLibrary, .bluetooth:
+                return .notDetermined
+            }
+        #else
+            return .notDetermined
+        #endif
+    }
+
+    #if canImport(AVFoundation)
+        private func mapAVAuthorizationStatus(
+            _ status: AVAuthorizationStatus
+        ) -> PermissionStatus {
+            switch status {
+            case .authorized: .authorized
+            case .denied: .denied
+            case .restricted: .restricted
+            case .notDetermined: .notDetermined
+            @unknown default: .notDetermined
+            }
+        }
+    #endif
 
     private func emitChange(_ change: PermissionChange) {
         changeContinuation?.yield(change)

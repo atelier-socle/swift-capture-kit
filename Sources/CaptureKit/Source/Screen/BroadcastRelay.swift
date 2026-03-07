@@ -22,6 +22,9 @@ public actor BroadcastRelay {
     /// Whether the relay is currently active.
     public private(set) var isActive: Bool = false
 
+    /// Whether the relay is currently paused.
+    public private(set) var isPaused: Bool = false
+
     /// Creates a new broadcast relay.
     ///
     /// - Parameters:
@@ -40,12 +43,12 @@ public actor BroadcastRelay {
 
     /// Called when the broadcast is paused.
     public func broadcastPaused() {
-        // Signals pause to main app
+        isPaused = true
     }
 
     /// Called when the broadcast resumes.
     public func broadcastResumed() {
-        // Signals resume to main app
+        isPaused = false
     }
 
     /// Called when the broadcast finishes.
@@ -66,7 +69,15 @@ public actor BroadcastRelay {
         sampleType: BroadcastSampleType,
         timestamp: TimeInterval
     ) {
-        guard isActive else { return }
-        // Real implementation writes to shared container
+        guard isActive, !isPaused, data.count <= maxBufferSize else { return }
+
+        guard
+            let containerURL = FileManager.default.containerURL(
+                forSecurityApplicationGroupIdentifier: appGroupID)
+        else { return }
+
+        let fileName = "\(sampleType.rawValue)_\(Int(timestamp * 1000)).buf"
+        let fileURL = containerURL.appendingPathComponent(fileName)
+        try? data.write(to: fileURL, options: .atomic)
     }
 }

@@ -47,6 +47,11 @@ public actor FileAudioSource: AudioSource {
     /// The audio file reader (DI — defaults to real AVAssetReader).
     private let fileReader: any AudioFileReaderProviding
 
+    /// Audio level metering.
+    private let audioMeter = AudioMeter()
+    private let _audioLevelStream: AsyncStream<AudioLevelSample>
+    private let _audioLevelContinuation: AsyncStream<AudioLevelSample>.Continuation
+
     /// Overrides startTime when seek() is called.
     private var seekTime: TimeInterval?
 
@@ -91,6 +96,9 @@ public actor FileAudioSource: AudioSource {
         self.startTime = startTime
         self.endTime = endTime
         self.configuration = format
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
+        self._audioLevelStream = stream
+        self._audioLevelContinuation = continuation
         self.fileReader = SystemAudioFileReader()
     }
 
@@ -121,6 +129,9 @@ public actor FileAudioSource: AudioSource {
         self.startTime = startTime
         self.endTime = endTime
         self.configuration = format
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
+        self._audioLevelStream = stream
+        self._audioLevelContinuation = continuation
         self.fileReader = fileReader
     }
 
@@ -159,16 +170,12 @@ public actor FileAudioSource: AudioSource {
         }
 
         isCapturing = true
+        await audioMeter.start()
 
         self.duration = try await fileReader.open(url: url)
 
         let config = self.configuration
-        let format = AudioFormat(
-            sampleRate: config.sampleRate,
-            channelCount: config.channelCount,
-            channelLayout: config.channelLayout,
-            bitDepth: config.bitDepth
-        )
+        let format = makeFormat(from: config)
         self.activeFormat = format
 
         let effectiveStartTime = seekTime ?? startTime ?? 0.0
@@ -184,6 +191,16 @@ public actor FileAudioSource: AudioSource {
         )
         let stream = try await fileReader.readSamples(request)
 
+        let meter = audioMeter
+        let levelContinuation = _audioLevelContinuation
+        let meterLevels = await meter.levels
+
+        let forwardTask = Task {
+            for await level in meterLevels {
+                levelContinuation.yield(level)
+            }
+        }
+
         return AsyncStream { continuation in
             let task = Task {
                 var seq: Int64 = 0
@@ -196,11 +213,16 @@ public actor FileAudioSource: AudioSource {
                         sequenceNumber: seq
                     )
                     continuation.yield(buffer)
+                    await meter.processBuffer(buffer)
                     seq += 1
                 }
                 continuation.finish()
+                forwardTask.cancel()
             }
-            continuation.onTermination = { _ in task.cancel() }
+            continuation.onTermination = { _ in
+                task.cancel()
+                forwardTask.cancel()
+            }
         }
     }
 
@@ -208,6 +230,7 @@ public actor FileAudioSource: AudioSource {
     public func stopCapture() async {
         await fileReader.stop()
         isCapturing = false
+        await audioMeter.stop()
     }
 
     /// Seeks to the specified time offset in the audio file.
@@ -217,10 +240,17 @@ public actor FileAudioSource: AudioSource {
         self.seekTime = time
     }
 
-    /// An async stream of audio level samples. Always finishes immediately for the file source.
+    /// An async stream of real-time audio level samples.
     public nonisolated var audioLevel: AsyncStream<AudioLevelSample> {
-        AsyncStream { continuation in
-            continuation.finish()
-        }
+        _audioLevelStream
+    }
+
+    private func makeFormat(from config: AudioSourceConfiguration) -> AudioFormat {
+        AudioFormat(
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelLayout,
+            bitDepth: config.bitDepth
+        )
     }
 }

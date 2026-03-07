@@ -3,6 +3,10 @@
 
 import Foundation
 
+#if canImport(AVFoundation)
+    @preconcurrency import AVFoundation
+#endif
+
 /// Monitors available audio and video capture devices, including hot-plug events.
 ///
 /// Provides real-time device enumeration and change notifications for
@@ -77,8 +81,103 @@ public actor DeviceDiscovery {
 
     /// Force a refresh of the device list.
     public func refreshDeviceList() async {
-        // Real implementation queries hardware; empty in CI/testing
+        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+            let previousAudio = audioDevices
+            let previousVideo = videoDevices
+
+            audioDevices = discoverAudioDevices()
+            videoDevices = discoverVideoDevices()
+
+            for device in audioDevices where !previousAudio.contains(device) {
+                changeContinuation?.yield(.audioDeviceConnected(device))
+            }
+            for device in previousAudio where !audioDevices.contains(device) {
+                changeContinuation?.yield(.audioDeviceDisconnected(device.id))
+            }
+            for device in videoDevices where !previousVideo.contains(device) {
+                changeContinuation?.yield(.videoDeviceConnected(device))
+            }
+            for device in previousVideo where !videoDevices.contains(device) {
+                changeContinuation?.yield(.videoDeviceDisconnected(device.id))
+            }
+        #endif
     }
+
+    #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        private func discoverAudioDevices() -> [AudioDeviceInfo] {
+            let deviceTypes: [AVCaptureDevice.DeviceType] = [.microphone, .external]
+            let discoverySession = AVCaptureDevice.DiscoverySession(
+                deviceTypes: deviceTypes,
+                mediaType: .audio,
+                position: .unspecified
+            )
+            return discoverySession.devices.map { device in
+                AudioDeviceInfo(
+                    id: device.uniqueID,
+                    name: device.localizedName,
+                    manufacturer: device.manufacturer,
+                    modelID: device.modelID,
+                    connectionType: mapConnectionType(device),
+                    inputChannelCount: 1,
+                    supportedSampleRates: [.rate44100, .rate48000],
+                    isDefault: false
+                )
+            }
+        }
+
+        private func discoverVideoDevices() -> [VideoDeviceInfo] {
+            var deviceTypes: [AVCaptureDevice.DeviceType] = [
+                .builtInWideAngleCamera,
+                .external
+            ]
+            #if os(iOS)
+                deviceTypes.append(.builtInTelephotoCamera)
+                deviceTypes.append(.builtInUltraWideCamera)
+            #endif
+            let discoverySession = AVCaptureDevice.DiscoverySession(
+                deviceTypes: deviceTypes,
+                mediaType: .video,
+                position: .unspecified
+            )
+            return discoverySession.devices.map { device in
+                VideoDeviceInfo(
+                    id: device.uniqueID,
+                    name: device.localizedName,
+                    manufacturer: device.manufacturer,
+                    modelID: device.modelID,
+                    position: mapPosition(device.position),
+                    deviceType: mapDeviceType(device.deviceType),
+                    connectionType: mapConnectionType(device),
+                    hasFlash: device.hasFlash,
+                    hasTorch: device.hasTorch
+                )
+            }
+        }
+
+        private func mapPosition(_ position: AVCaptureDevice.Position) -> CameraPosition {
+            switch position {
+            case .front: .front
+            case .back: .back
+            case .unspecified: .unspecified
+            @unknown default: .unspecified
+            }
+        }
+
+        private func mapDeviceType(_ type: AVCaptureDevice.DeviceType) -> CameraDeviceType {
+            if type == .builtInWideAngleCamera { return .wideAngle }
+            if type == .external { return .externalUnknown }
+            #if os(iOS)
+                if type == .builtInTelephotoCamera { return .telephoto }
+                if type == .builtInUltraWideCamera { return .ultraWide }
+            #endif
+            return .wideAngle
+        }
+
+        private func mapConnectionType(_ device: AVCaptureDevice) -> DeviceConnectionType {
+            if device.deviceType == .external { return .usb }
+            return .builtIn
+        }
+    #endif
 
     /// Simulate a device connection (for testing).
     func simulateDeviceConnected(_ device: AudioDeviceInfo) {
