@@ -191,14 +191,14 @@ struct CaptureSessionEventsAndEdgeCasesTests {
 
     @Test("configured with preset returns session")
     func configuredWithPresetReturnsSession() async {
-        let session = CaptureSession.configured(with: "test")
+        let session = CaptureSession.configured(with: CapturePreset.twitch())
         #expect(await session.state == .idle)
     }
 
     @Test("configured session is in idle state")
     func configuredSessionIsInIdleState() async {
         let session = CaptureSession.configured(
-            with: "podcastAudioHQ")
+            with: CapturePreset.podcastAudioHQ())
         #expect(await session.state == .idle)
     }
 

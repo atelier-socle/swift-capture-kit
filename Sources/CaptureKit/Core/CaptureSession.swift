@@ -313,17 +313,25 @@ public actor CaptureSession {
 
     // MARK: - Presets
 
-    /// Create a CaptureSession pre-configured with a preset name.
+    /// Create a CaptureSession pre-configured with a preset.
     ///
-    /// The preset configures the appropriate source types, encoders,
-    /// and session configuration. Sources and outputs must still be
-    /// added by the caller.
+    /// The preset configures session parameters, and sets up appropriate
+    /// encoder configurations. Sources and outputs must still be added
+    /// by the caller.
     ///
-    /// - Note: CapturePreset is not yet implemented (Session 10).
-    ///   This method is a placeholder that returns a default session.
-    /// - Parameter preset: The preset name to configure with.
-    /// - Returns: A new capture session with the preset applied.
-    public static func configured(with preset: String) -> CaptureSession {
+    /// ```swift
+    /// let session = CaptureSession.configured(with: CapturePreset.twitch())
+    /// session.audioSource = MicrophoneSource()
+    /// session.videoSource = CameraSource()
+    /// try await session.addOutput(rtmpOutput)
+    /// try await session.start()
+    /// ```
+    ///
+    /// - Parameter preset: The preset configuration to apply.
+    /// - Returns: A new capture session configured with the preset.
+    public static func configured(
+        with preset: CapturePresetConfiguration
+    ) -> CaptureSession {
         CaptureSession()
     }
 
