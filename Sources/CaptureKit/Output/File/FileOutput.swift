@@ -40,9 +40,11 @@ public actor FileOutput: CaptureOutput {
         configuration.rotation
     }
 
+    private var startTime: Date?
+    private let fileWriter: any FileWriterProviding
+    private var filesCreated: Int = 0
     private var audioBuffersReceived: Int64 = 0
     private var videoFramesReceived: Int64 = 0
-    private var startTime: Date?
 
     /// Creates a new file output with the given configuration.
     ///
@@ -51,6 +53,7 @@ public actor FileOutput: CaptureOutput {
         self.outputID = "file-\(UUID().uuidString.prefix(8))"
         self.displayName = "File: \(configuration.url.lastPathComponent)"
         self.configuration = configuration
+        self.fileWriter = AVAssetWriterEngine()
     }
 
     /// Creates a new file output with a URL and container format.
@@ -62,6 +65,21 @@ public actor FileOutput: CaptureOutput {
         self.init(
             configuration: FileOutputConfiguration(
                 url: url, container: container))
+    }
+
+    /// Creates a new file output with an injected writer (for testing).
+    ///
+    /// - Parameters:
+    ///   - configuration: The file output configuration.
+    ///   - fileWriter: The file writer provider to use.
+    init(
+        configuration: FileOutputConfiguration,
+        fileWriter: any FileWriterProviding
+    ) {
+        self.outputID = "file-\(UUID().uuidString.prefix(8))"
+        self.displayName = "File: \(configuration.url.lastPathComponent)"
+        self.configuration = configuration
+        self.fileWriter = fileWriter
     }
 
     /// Prepares the output to receive media data.
@@ -79,7 +97,16 @@ public actor FileOutput: CaptureOutput {
             )
         }
         state = .ready
+
+        try await fileWriter.prepare(
+            url: configuration.url,
+            container: configuration.container,
+            audioFormat: audioFormat,
+            videoFormat: videoFormat
+        )
+
         startTime = Date()
+        filesCreated = 1
         state = .active
     }
 
@@ -88,8 +115,15 @@ public actor FileOutput: CaptureOutput {
     /// - Parameter buffer: The encoded audio buffer to receive.
     public func receiveAudio(_ buffer: EncodedAudioBuffer) async throws {
         guard state == .active else { return }
+        try await fileWriter.writeAudio(
+            buffer.data,
+            codec: buffer.codec,
+            timestamp: buffer.timestamp,
+            duration: buffer.duration
+        )
         audioBuffersReceived += 1
-        updateStatistics()
+        await updateStatistics()
+        await checkRotation()
     }
 
     /// Delivers an encoded video frame to this output.
@@ -97,27 +131,96 @@ public actor FileOutput: CaptureOutput {
     /// - Parameter frame: The encoded video frame to receive.
     public func receiveVideo(_ frame: EncodedVideoFrame) async throws {
         guard state == .active else { return }
+        try await fileWriter.writeVideo(
+            frame.data,
+            codec: frame.codec,
+            timestamp: frame.timestamp,
+            isKeyFrame: frame.isKeyFrame
+        )
         videoFramesReceived += 1
-        updateStatistics()
+        await updateStatistics()
+        await checkRotation()
     }
 
     /// Finalizes the output, flushing any remaining data.
     public func finalize() async throws {
         guard state == .active || state == .ready else { return }
+        try await fileWriter.finalize()
+        await updateStatistics()
         state = .finalized
     }
 
     // MARK: - Private
 
-    private func updateStatistics() {
+    /// Checks if rotation is needed based on the configuration.
+    ///
+    /// File rotation creates new files when duration or size thresholds
+    /// are reached. The old file is finalized and a new one is started.
+    private func checkRotation() async {
+        guard let rotation = configuration.rotation else { return }
         let duration =
             startTime.map { Date().timeIntervalSince($0) } ?? 0
+        let currentSize = await fileWriter.bytesWritten
+
+        let shouldRotate: Bool = switch rotation.trigger {
+        case .duration(let maxDuration):
+            duration >= maxDuration
+        case .size(let maxSize):
+            currentSize >= maxSize
+        case .durationOrSize(let maxDuration, let maxSize):
+            duration >= maxDuration || currentSize >= maxSize
+        }
+
+        if shouldRotate {
+            try? await fileWriter.finalize()
+            filesCreated += 1
+            startTime = Date()
+            let rotatedURL = Self.rotatedURL(
+                base: configuration.url,
+                index: filesCreated,
+                naming: rotation.namingPattern
+            )
+            try? await fileWriter.prepare(
+                url: rotatedURL,
+                container: configuration.container,
+                audioFormat: nil,
+                videoFormat: nil
+            )
+        }
+    }
+
+    private static func rotatedURL(
+        base: URL,
+        index: Int,
+        naming: FileRotationNaming
+    ) -> URL {
+        let ext = base.pathExtension
+        let stem = base.deletingPathExtension().lastPathComponent
+        let dir = base.deletingLastPathComponent()
+
+        let suffix: String = switch naming {
+        case .timestamp:
+            ISO8601DateFormatter().string(from: Date())
+                .replacingOccurrences(of: ":", with: "-")
+        case .sequential:
+            String(format: "%03d", index)
+        case .unixTimestamp:
+            String(Int(Date().timeIntervalSince1970))
+        }
+
+        return dir.appendingPathComponent("\(stem)-\(suffix).\(ext)")
+    }
+
+    private func updateStatistics() async {
+        let duration =
+            startTime.map { Date().timeIntervalSince($0) } ?? 0
+        let written = await fileWriter.bytesWritten
         recordingStatistics = RecordingStatistics(
             duration: duration,
-            fileSize: 0,
+            fileSize: written,
             audioBuffersWritten: audioBuffersReceived,
             videoFramesWritten: videoFramesReceived,
-            filesCreated: 1,
+            filesCreated: filesCreated,
             currentFileURL: configuration.url
         )
     }

@@ -30,6 +30,57 @@
         }
     }
 
+    /// Delegate to receive captured photos from AVCapturePhotoOutput.
+    ///
+    /// @unchecked Sendable justification: This class bridges the ObjC delegate
+    /// callback to a Swift CheckedContinuation. The continuation is consumed
+    /// exactly once. No mutable state is accessed from multiple threads.
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    private final class PhotoCaptureDelegate: NSObject,
+        AVCapturePhotoCaptureDelegate, @unchecked Sendable
+    {
+        private var continuation: CheckedContinuation<CapturedPhoto, any Error>?
+
+        init(continuation: CheckedContinuation<CapturedPhoto, any Error>) {
+            self.continuation = continuation
+        }
+
+        func photoOutput(
+            _ output: AVCapturePhotoOutput,
+            didFinishProcessingPhoto photo: AVCapturePhoto,
+            error: (any Error)?
+        ) {
+            guard let continuation = continuation else { return }
+            self.continuation = nil
+
+            if let error {
+                continuation.resume(throwing: CaptureError.sourceNotAvailable(
+                    sourceType: "camera",
+                    reason: "Photo capture failed: \(error.localizedDescription)"
+                ))
+                return
+            }
+
+            guard let data = photo.fileDataRepresentation() else {
+                continuation.resume(throwing: CaptureError.sourceNotAvailable(
+                    sourceType: "camera",
+                    reason: "No photo data available"
+                ))
+                return
+            }
+
+            let dimensions = photo.resolvedSettings.photoDimensions
+            let capturedPhoto = CapturedPhoto(
+                data: data,
+                format: .heif,
+                timestamp: ProcessInfo.processInfo.systemUptime,
+                width: Int(dimensions.width),
+                height: Int(dimensions.height)
+            )
+            continuation.resume(returning: capturedPhoto)
+        }
+    }
+
     /// Real video capture using AVCaptureSession + AVCaptureDevice.
     ///
     /// Actor isolation protects the non-Sendable AVCaptureSession.
@@ -38,7 +89,9 @@
     actor SystemVideoCaptureEngine: VideoCaptureProviding {
         private var captureSession: AVCaptureSession?
         private var videoOutput: AVCaptureVideoDataOutput?
+        private var photoOutput: AVCapturePhotoOutput?
         private var currentDevice: AVCaptureDevice?
+        private var photoCaptureDelegate: PhotoCaptureDelegate?
         private var _isCapturing = false
 
         var isCapturing: Bool { _isCapturing }
@@ -80,8 +133,14 @@
             }
             session.addOutput(output)
 
+            let photo = AVCapturePhotoOutput()
+            if session.canAddOutput(photo) {
+                session.addOutput(photo)
+            }
+
             self.captureSession = session
             self.videoOutput = output
+            self.photoOutput = photo
             self.currentDevice = device
             _isCapturing = true
 
@@ -110,6 +169,8 @@
             captureSession?.stopRunning()
             captureSession = nil
             videoOutput = nil
+            photoOutput = nil
+            photoCaptureDelegate = nil
             currentDevice = nil
             _isCapturing = false
         }
@@ -161,10 +222,91 @@
         func capturePhoto(
             settings: PhotoCaptureSettings?
         ) async throws -> CapturedPhoto {
-            throw CaptureError.sourceNotAvailable(
-                sourceType: "camera",
-                reason: "Photo capture requires hardware camera"
-            )
+            guard let photoOutput else {
+                throw CaptureError.sourceNotAvailable(
+                    sourceType: "camera",
+                    reason: "Photo output not available — call startCapture() first"
+                )
+            }
+
+            let photoSettings = AVCapturePhotoSettings()
+            if let settings {
+                switch settings.flashMode {
+                case .off: photoSettings.flashMode = .off
+                case .on: photoSettings.flashMode = .on
+                case .auto: photoSettings.flashMode = .auto
+                }
+            }
+
+            return try await withCheckedThrowingContinuation { continuation in
+                let delegate = PhotoCaptureDelegate(continuation: continuation)
+                self.photoCaptureDelegate = delegate
+                photoOutput.capturePhoto(
+                    with: photoSettings, delegate: delegate)
+            }
+        }
+
+        func setDepthDataDelivery(_ enabled: Bool) async throws {
+            #if os(iOS)
+                guard let session = captureSession else { return }
+                session.beginConfiguration()
+                if enabled {
+                    let depthOutput = AVCaptureDepthDataOutput()
+                    if session.canAddOutput(depthOutput) {
+                        session.addOutput(depthOutput)
+                        depthOutput.isFilteringEnabled = true
+                    }
+                } else {
+                    for output in session.outputs
+                    where output is AVCaptureDepthDataOutput {
+                        session.removeOutput(output)
+                    }
+                }
+                session.commitConfiguration()
+            #endif
+            // Depth data output is only available on iOS.
+        }
+
+        func applyContinuityFeatures(
+            _ features: ContinuityCameraFeatures
+        ) async throws {
+            #if os(macOS)
+                if features.centerStage {
+                    AVCaptureDevice.centerStageControlMode = .cooperative
+                    AVCaptureDevice.isCenterStageEnabled = true
+                } else {
+                    AVCaptureDevice.isCenterStageEnabled = false
+                }
+                // Portrait effect and Studio Light are user-controlled via
+                // Control Center. Apple does not provide API to SET these —
+                // only to query their current state via:
+                // AVCaptureDevice.isPortraitEffectEnabled (class property)
+                // AVCaptureDevice.isStudioLightEnabled (class property)
+            #endif
+        }
+
+        func setFocusPointOfInterest(
+            x: Double, y: Double
+        ) async throws {
+            guard let device = currentDevice else { return }
+            guard device.isFocusPointOfInterestSupported else { return }
+            try device.lockForConfiguration()
+            device.focusPointOfInterest = CGPoint(x: x, y: y)
+            device.focusMode = .autoFocus
+            device.unlockForConfiguration()
+        }
+
+        func setFocusMode(_ mode: FocusMode) async throws {
+            guard let device = currentDevice else { return }
+            let avMode: AVCaptureDevice.FocusMode = switch mode {
+            case .locked, .manualFocus: .locked
+            case .autoFocus: .autoFocus
+            case .continuousAutoFocus: .continuousAutoFocus
+            }
+            guard device.isFocusModeSupported(avMode) else { return }
+            try device.lockForConfiguration()
+            device.focusMode = avMode
+            device.unlockForConfiguration()
         }
 
         // MARK: - Private Helpers
@@ -213,142 +355,5 @@
             )
         }
 
-        private func findDevice(
-            position: CameraPosition,
-            deviceType: CameraDeviceType
-        ) throws -> AVCaptureDevice {
-            let avPosition: AVCaptureDevice.Position =
-                switch position {
-                case .front: .front
-                case .back: .back
-                case .unspecified: .unspecified
-                }
-
-            let avDeviceType = avCaptureDeviceType(for: deviceType)
-
-            let discoverySession = AVCaptureDevice.DiscoverySession(
-                deviceTypes: [avDeviceType],
-                mediaType: .video,
-                position: avPosition
-            )
-
-            guard let device = discoverySession.devices.first else {
-                throw CaptureError.deviceNotFound(
-                    deviceID:
-                        "\(position.rawValue)-\(deviceType.rawValue)"
-                )
-            }
-            return device
-        }
-
-        private func avCaptureDeviceType(
-            for deviceType: CameraDeviceType
-        ) -> AVCaptureDevice.DeviceType {
-            switch deviceType {
-            case .wideAngle:
-                return .builtInWideAngleCamera
-            #if os(iOS)
-                case .ultraWideAngle:
-                    return .builtInUltraWideCamera
-                case .telephoto:
-                    return .builtInTelephotoCamera
-                case .dualCamera:
-                    return .builtInDualCamera
-                case .dualWideCamera:
-                    return .builtInDualWideCamera
-                case .tripleCamera:
-                    return .builtInTripleCamera
-                case .lidarScanner:
-                    return .builtInLiDARDepthCamera
-                case .trueDepth:
-                    return .builtInTrueDepthCamera
-            #endif
-            case .continuityCamera:
-                return .continuityCamera
-            case .externalUnknown:
-                return .external
-            #if os(macOS)
-                default:
-                    return .builtInWideAngleCamera
-            #endif
-            }
-        }
-
-        private func sessionPreset(
-            for resolution: VideoResolution
-        ) -> AVCaptureSession.Preset {
-            switch resolution {
-            case .uhd4K, .dci4K: return .hd4K3840x2160
-            case .p1080: return .hd1920x1080
-            case .p720: return .hd1280x720
-            case .vga: return .vga640x480
-            case .qvga: return .cif352x288
-            default: return .hd1920x1080
-            }
-        }
-
-        private func pixelFormatType(
-            for pixelFormat: PixelFormat
-        ) -> OSType {
-            switch pixelFormat {
-            case .nv12:
-                return kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-            case .bgra:
-                return kCVPixelFormatType_32BGRA
-            case .p010:
-                return kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
-            case .p210:
-                return kCVPixelFormatType_422YpCbCr10BiPlanarVideoRange
-            case .argb:
-                return kCVPixelFormatType_32ARGB
-            case .yuvs:
-                return kCVPixelFormatType_422YpCbCr8_yuvs
-            }
-        }
-
-        private func configureDevice(
-            _ device: AVCaptureDevice,
-            configuration: VideoSourceConfiguration
-        ) throws {
-            try device.lockForConfiguration()
-            defer { device.unlockForConfiguration() }
-
-            let desiredFPS = configuration.frameRate.value
-            for format in device.formats {
-                for range in format.videoSupportedFrameRateRanges
-                where range.minFrameRate <= desiredFPS
-                    && range.maxFrameRate >= desiredFPS
-                {
-                    device.activeFormat = format
-                    device.activeVideoMinFrameDuration = CMTime(
-                        value: 1,
-                        timescale: CMTimeScale(desiredFPS))
-                    device.activeVideoMaxFrameDuration = CMTime(
-                        value: 1,
-                        timescale: CMTimeScale(desiredFPS))
-                    break
-                }
-            }
-
-            if device.isFocusModeSupported(.continuousAutoFocus),
-                configuration.focusMode == .continuousAutoFocus
-            {
-                device.focusMode = .continuousAutoFocus
-            }
-
-            if device.isExposureModeSupported(.continuousAutoExposure),
-                configuration.exposureMode == .continuousAutoExposure
-            {
-                device.exposureMode = .continuousAutoExposure
-            }
-
-            if device.isWhiteBalanceModeSupported(
-                .continuousAutoWhiteBalance),
-                configuration.whiteBalanceMode
-                    == .continuousAutoWhiteBalance
-            {
-                device.whiteBalanceMode = .continuousAutoWhiteBalance
-            }
-        }
     }
 #endif

@@ -106,14 +106,14 @@ struct CameraSourceIntegrationTests {
         #expect(updated == .front)
     }
 
-    @Test("capturePhoto delegates to engine")
+    @Test("capturePhoto delegates to engine and returns photo")
     func capturePhotoDelegatesToEngine() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let engine = MockVideoCaptureEngine()
         let source = CameraSource(captureEngine: engine)
-        await #expect(throws: CaptureError.self) {
-            _ = try await source.capturePhoto()
-        }
+        let photo = try await source.capturePhoto()
+        #expect(photo.format == .jpeg)
+        #expect(photo.data.count > 0)
     }
 
     @Test("sequential frames have incrementing sequence numbers")

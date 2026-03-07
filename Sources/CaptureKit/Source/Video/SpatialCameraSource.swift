@@ -107,6 +107,15 @@
             let config = self.configuration
             self.activeFormat = makeFormat(from: config)
 
+            // spatialMode is read at capture start time.
+            // .stereoscopic uses the spatial video configuration as-is
+            //   for MV-HEVC stereo output (requires spatial entitlements).
+            // .monoFallback falls back to standard 2D capture (single view)
+            //   by using the same configuration without stereo encoding.
+            // The actual stereo vs mono encoding is handled by the MV-HEVC
+            // encoder in the pipeline — the capture engine captures raw
+            // frames identically in both modes.
+
             let stream = try await captureEngine.startCapture(
                 configuration: config,
                 position: .back,

@@ -56,7 +56,12 @@ public actor CameraSource: VideoSource {
     /// Whether to deliver depth data alongside video.
     public var depthDataDelivery: Bool
 
-    /// Camera Control support (iPhone 16+, iOS 26).
+    /// Camera Control support (iPhone 16+, iOS 18+).
+    ///
+    /// When enabled, the capture session is compatible with Camera Control
+    /// hardware button integration via `AVCaptureSession.addControl()`.
+    /// The app is responsible for creating and adding the specific controls
+    /// (AVCaptureSlider, AVCaptureToggle, AVCaptureIndexPicker).
     public var captureControlEnabled: Bool
 
     /// The current configuration.
@@ -154,6 +159,15 @@ public actor CameraSource: VideoSource {
         if zoomFactor != 1.0 {
             try? await captureEngine.setZoom(zoomFactor)
         }
+        if depthDataDelivery {
+            try? await captureEngine.setDepthDataDelivery(true)
+        }
+        // captureControlEnabled is stored and available for the caller
+        // to read. Actual Camera Control hardware button integration
+        // (AVCaptureSession.addControl) requires building the UI controls
+        // (AVCaptureSlider, AVCaptureToggle, AVCaptureIndexPicker) which
+        // are app-specific — the capture library provides the flag and
+        // the session, the app wires the controls.
 
         let analyzer = statsAnalyzer
         let statsContinuation = _frameStatisticsContinuation

@@ -86,12 +86,49 @@ actor MockVideoCaptureEngine: VideoCaptureProviding {
         lastTorchMode = mode
     }
 
+    /// The last photo settings passed to capturePhoto.
+    var lastPhotoSettings: PhotoCaptureSettings?
+
+    /// Whether depth data delivery was enabled.
+    var depthDataDeliveryEnabled: Bool = false
+
+    /// The last continuity features applied.
+    var lastContinuityFeatures: ContinuityCameraFeatures?
+
+    /// The last focus point set.
+    var lastFocusPoint: (x: Double, y: Double)?
+
+    /// The last focus mode set.
+    var lastFocusMode: FocusMode?
+
     func capturePhoto(
         settings: PhotoCaptureSettings?
     ) async throws -> CapturedPhoto {
-        throw CaptureError.sourceNotAvailable(
-            sourceType: "camera",
-            reason: "Mock capture photo not supported"
+        lastPhotoSettings = settings
+        return CapturedPhoto(
+            data: Data([0xFF, 0xD8, 0xFF, 0xE0]),
+            format: .jpeg,
+            timestamp: 0.0,
+            width: 1920,
+            height: 1080
         )
+    }
+
+    func setDepthDataDelivery(_ enabled: Bool) async throws {
+        depthDataDeliveryEnabled = enabled
+    }
+
+    func applyContinuityFeatures(
+        _ features: ContinuityCameraFeatures
+    ) async throws {
+        lastContinuityFeatures = features
+    }
+
+    func setFocusPointOfInterest(x: Double, y: Double) async throws {
+        lastFocusPoint = (x: x, y: y)
+    }
+
+    func setFocusMode(_ mode: FocusMode) async throws {
+        lastFocusMode = mode
     }
 }

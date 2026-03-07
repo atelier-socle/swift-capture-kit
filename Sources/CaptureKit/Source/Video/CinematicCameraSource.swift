@@ -122,6 +122,8 @@ public actor CinematicCameraSource: VideoSource {
             deviceType: .wideAngle
         )
 
+        try? await applyFocusSubject(focusSubject)
+
         let analyzer = statsAnalyzer
         let statsContinuation = _frameStatisticsContinuation
 
@@ -168,6 +170,31 @@ public actor CinematicCameraSource: VideoSource {
     ///   - duration: The duration of the focus transition in seconds.
     public func rackFocus(to subject: CinematicFocusSubject, duration: TimeInterval) async {
         self.focusSubject = subject
+        try? await applyFocusSubject(subject)
+    }
+
+    /// Maps a CinematicFocusSubject to real device calls.
+    ///
+    /// On real devices, hardware aperture is fixed. The fNumber property
+    /// controls depth-of-field simulation in post-processing — it cannot
+    /// be mapped to a hardware AVCaptureDevice setting. Focus subject
+    /// selection maps to AVCaptureDevice focus point/mode APIs.
+    private func applyFocusSubject(
+        _ subject: CinematicFocusSubject
+    ) async throws {
+        switch subject {
+        case .automatic:
+            try await captureEngine.setFocusMode(.continuousAutoFocus)
+        case .point(let x, let y):
+            try await captureEngine.setFocusPointOfInterest(x: x, y: y)
+        case .person:
+            try await captureEngine.setFocusMode(.continuousAutoFocus)
+        case .object(let x, let y, _, _):
+            let centerX = x + 0.5
+            let centerY = y + 0.5
+            try await captureEngine.setFocusPointOfInterest(
+                x: min(centerX, 1.0), y: min(centerY, 1.0))
+        }
     }
 
     private func makeFormat(from config: VideoSourceConfiguration) -> VideoFormat {

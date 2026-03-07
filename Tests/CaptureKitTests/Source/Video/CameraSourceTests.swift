@@ -124,13 +124,14 @@ struct CameraSourceTests {
         #expect(availability.requiredPermissions.contains(.camera))
     }
 
-    @Test("capturePhoto throws without hardware")
-    func capturePhotoThrowsWithoutHardware() async throws {
+    @Test("capturePhoto delegates to engine and returns photo")
+    func capturePhotoDelegatesToEngine() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = CameraSource(captureEngine: MockVideoCaptureEngine())
-        await #expect(throws: CaptureError.self) {
-            _ = try await source.capturePhoto()
-        }
+        let engine = MockVideoCaptureEngine()
+        let source = CameraSource(captureEngine: engine)
+        let photo = try await source.capturePhoto()
+        #expect(photo.width == 1920)
+        #expect(photo.height == 1080)
     }
 }

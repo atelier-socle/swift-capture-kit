@@ -5,8 +5,9 @@ import Foundation
 
 /// Audio monitoring output for hearing captured audio in real time.
 ///
-/// Passes audio through to the system audio output device for monitoring.
-/// Does not record — purely for real-time monitoring during capture.
+/// Passes audio through to the system audio output device for monitoring
+/// using AVAudioEngine. Does not record — purely for real-time monitoring
+/// during capture.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 public actor AudioPreviewOutput: CaptureOutput {
     /// A unique identifier for this output.
@@ -22,13 +23,26 @@ public actor AudioPreviewOutput: CaptureOutput {
     public private(set) var state: CaptureOutputState = .idle
 
     /// Monitoring volume (0.0–1.0).
-    public var volume: Float
+    public var volume: Float {
+        didSet {
+            let newVolume = volume
+            Task { await playbackEngine?.setVolume(newVolume) }
+        }
+    }
 
     /// Whether monitoring is muted.
-    public var isMuted: Bool
+    public var isMuted: Bool {
+        didSet {
+            let muted = isMuted
+            Task { await playbackEngine?.setMuted(muted) }
+        }
+    }
 
     /// Total audio buffers monitored.
     public private(set) var buffersMonitored: Int64 = 0
+
+    /// The playback engine (DI — defaults to real AVAudioEngine).
+    private var playbackEngine: (any AudioPlaybackProviding)?
 
     /// Creates a new audio preview output.
     ///
@@ -37,6 +51,24 @@ public actor AudioPreviewOutput: CaptureOutput {
         self.outputID = "audio-preview-\(UUID().uuidString.prefix(8))"
         self.volume = max(0.0, min(1.0, volume))
         self.isMuted = false
+        #if canImport(AVFAudio)
+            self.playbackEngine = SystemAudioPlaybackEngine()
+        #endif
+    }
+
+    /// Creates a new audio preview output with an injected playback engine.
+    ///
+    /// - Parameters:
+    ///   - volume: The monitoring volume.
+    ///   - playbackEngine: The playback engine to use.
+    init(
+        volume: Float = 1.0,
+        playbackEngine: any AudioPlaybackProviding
+    ) {
+        self.outputID = "audio-preview-\(UUID().uuidString.prefix(8))"
+        self.volume = max(0.0, min(1.0, volume))
+        self.isMuted = false
+        self.playbackEngine = playbackEngine
     }
 
     /// Prepares the output to receive media data.
@@ -47,6 +79,9 @@ public actor AudioPreviewOutput: CaptureOutput {
     public func prepare(
         audioFormat: AudioFormat?, videoFormat: VideoFormat?
     ) async throws {
+        if let audioFormat {
+            try await playbackEngine?.prepare(format: audioFormat)
+        }
         state = .active
     }
 
@@ -55,6 +90,7 @@ public actor AudioPreviewOutput: CaptureOutput {
     /// - Parameter buffer: The encoded audio buffer to monitor.
     public func receiveAudio(_ buffer: EncodedAudioBuffer) async throws {
         guard state == .active, !isMuted else { return }
+        try await playbackEngine?.play(buffer.data)
         buffersMonitored += 1
     }
 
@@ -69,6 +105,7 @@ public actor AudioPreviewOutput: CaptureOutput {
 
     /// Finalizes the output.
     public func finalize() async throws {
+        await playbackEngine?.stop()
         state = .finalized
     }
 }

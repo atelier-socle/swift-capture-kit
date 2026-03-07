@@ -3,7 +3,16 @@
 
 import Foundation
 
+#if os(macOS)
+    import CoreAudio
+#endif
+
 /// An audio source that combines multiple audio devices into a single aggregate device.
+///
+/// On macOS, creates a real CoreAudio aggregate device combining all specified
+/// sub-devices. The aggregate device is destroyed when capture stops.
+/// On iOS, aggregate devices are not supported by CoreAudio — the source
+/// falls back to using the first device.
 ///
 /// Requires at least two devices to form a valid aggregate. Supports drift compensation
 /// and selection of a clock source device.
@@ -48,6 +57,11 @@ public actor AggregateAudioSource: AudioSource {
 
     /// The audio capture engine (DI — defaults to real AVAudioEngine).
     private let captureEngine: any AudioCaptureProviding
+
+    #if os(macOS)
+        /// The CoreAudio aggregate device ID, created at capture start.
+        private var aggregateDeviceID: AudioDeviceID = 0
+    #endif
 
     /// Audio level metering.
     private let audioMeter = AudioMeter()
@@ -146,9 +160,20 @@ public actor AggregateAudioSource: AudioSource {
         )
         self.activeFormat = format
 
+        #if os(macOS)
+            aggregateDeviceID = try createAggregateDevice()
+        #endif
+
+        let deviceID: String?
+        #if os(macOS)
+            deviceID = String(aggregateDeviceID)
+        #else
+            deviceID = devices.first?.id
+        #endif
+
         let stream = try await captureEngine.startCapture(
             configuration: config,
-            deviceID: devices.first?.id
+            deviceID: deviceID
         )
 
         let meter = audioMeter
@@ -189,6 +214,9 @@ public actor AggregateAudioSource: AudioSource {
     /// Stops capturing audio from the aggregate device.
     public func stopCapture() async {
         await captureEngine.stopCapture()
+        #if os(macOS)
+            destroyAggregateDevice()
+        #endif
         isCapturing = false
         await audioMeter.stop()
     }
@@ -197,4 +225,55 @@ public actor AggregateAudioSource: AudioSource {
     public nonisolated var audioLevel: AsyncStream<AudioLevelSample> {
         _audioLevelStream
     }
+
+    #if os(macOS)
+        /// Creates a CoreAudio aggregate device from the configured sub-devices.
+        private func createAggregateDevice() throws -> AudioDeviceID {
+            let uid =
+                "com.atelier-socle.capturekit.aggregate-\(UUID().uuidString)"
+            let clockDeviceUID = (clockSource ?? devices[0]).id
+
+            let subDevices: [[String: Any]] = devices.map { device in
+                [kAudioSubDeviceUIDKey as String: device.id]
+            }
+
+            let description: [String: Any] = [
+                kAudioAggregateDeviceNameKey as String:
+                    "CaptureKit-Aggregate",
+                kAudioAggregateDeviceUIDKey as String: uid,
+                kAudioAggregateDeviceSubDeviceListKey as String: subDevices,
+                kAudioAggregateDeviceMainSubDeviceKey as String:
+                    clockDeviceUID,
+                kAudioAggregateDeviceClockDeviceKey as String:
+                    clockDeviceUID,
+                kAudioAggregateDeviceIsPrivateKey as String: true,
+                kAudioAggregateDeviceIsStackedKey as String: false
+            ]
+
+            var aggregateID: AudioDeviceID = 0
+            let desc = description as CFDictionary
+
+            let status = AudioHardwareCreateAggregateDevice(
+                desc, &aggregateID)
+            guard status == noErr else {
+                throw CaptureError.sourceNotAvailable(
+                    sourceType: "aggregate",
+                    reason:
+                        "Failed to create aggregate device (OSStatus: \(status))"
+                )
+            }
+
+            // Drift compensation is enabled by default for aggregate
+            // devices created with AudioHardwareCreateAggregateDevice.
+
+            return aggregateID
+        }
+
+        /// Destroys the CoreAudio aggregate device.
+        private func destroyAggregateDevice() {
+            guard aggregateDeviceID != 0 else { return }
+            AudioHardwareDestroyAggregateDevice(aggregateDeviceID)
+            aggregateDeviceID = 0
+        }
+    #endif
 }

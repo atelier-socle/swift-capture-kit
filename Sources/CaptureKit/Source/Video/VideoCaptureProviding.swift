@@ -64,6 +64,30 @@ protocol VideoCaptureProviding: Sendable {
     func capturePhoto(
         settings: PhotoCaptureSettings?
     ) async throws -> CapturedPhoto
+
+    /// Enable or disable depth data delivery alongside video.
+    ///
+    /// - Parameter enabled: Whether to enable depth data delivery.
+    func setDepthDataDelivery(_ enabled: Bool) async throws
+
+    /// Apply Continuity Camera features (Center Stage, etc.).
+    ///
+    /// - Parameter features: The Continuity Camera features to apply.
+    func applyContinuityFeatures(
+        _ features: ContinuityCameraFeatures
+    ) async throws
+
+    /// Set the focus point of interest on the active device.
+    ///
+    /// - Parameters:
+    ///   - x: Normalized x coordinate (0.0–1.0).
+    ///   - y: Normalized y coordinate (0.0–1.0).
+    func setFocusPointOfInterest(x: Double, y: Double) async throws
+
+    /// Set the focus mode on the active device.
+    ///
+    /// - Parameter mode: The focus mode to set.
+    func setFocusMode(_ mode: FocusMode) async throws
 }
 
 /// Video capture engine for visionOS using AVCaptureSession with
@@ -219,6 +243,24 @@ protocol VideoCaptureProviding: Sendable {
                 sourceType: "camera",
                 reason: "Photo capture not supported on visionOS"
             )
+        }
+
+        func setDepthDataDelivery(_ enabled: Bool) async throws {
+            // Depth data delivery is not available on visionOS standard capture.
+        }
+
+        func applyContinuityFeatures(
+            _ features: ContinuityCameraFeatures
+        ) async throws {
+            // Continuity Camera is not available on visionOS.
+        }
+
+        func setFocusPointOfInterest(x: Double, y: Double) async throws {
+            // Focus point of interest is not supported on visionOS cameras.
+        }
+
+        func setFocusMode(_ mode: FocusMode) async throws {
+            // Focus mode changes are not supported on visionOS cameras.
         }
 
         // MARK: - Private Helpers

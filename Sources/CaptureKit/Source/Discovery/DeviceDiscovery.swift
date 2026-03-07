@@ -66,10 +66,33 @@ public actor DeviceDiscovery {
     }
 
     /// Start monitoring for device connections and disconnections.
+    ///
+    /// Observes NotificationCenter for device connect/disconnect events
+    /// and refreshes the device list when changes are detected.
     public func startMonitoring() async {
         guard !isMonitoring else { return }
         isMonitoring = true
         await refreshDeviceList()
+
+        #if canImport(AVFoundation) && !targetEnvironment(simulator) && !os(visionOS)
+            let connectedTask = Task { [weak self] in
+                let notifications = NotificationCenter.default.notifications(
+                    named: .AVCaptureDeviceWasConnected)
+                for await _ in notifications {
+                    await self?.refreshDeviceList()
+                }
+            }
+            let disconnectedTask = Task { [weak self] in
+                let notifications = NotificationCenter.default.notifications(
+                    named: .AVCaptureDeviceWasDisconnected)
+                for await _ in notifications {
+                    await self?.refreshDeviceList()
+                }
+            }
+            monitoringTask = Task {
+                _ = await (connectedTask.value, disconnectedTask.value)
+            }
+        #endif
     }
 
     /// Stop monitoring for device changes.
@@ -81,7 +104,7 @@ public actor DeviceDiscovery {
 
     /// Force a refresh of the device list.
     public func refreshDeviceList() async {
-        #if canImport(AVFoundation) && !targetEnvironment(simulator)
+        #if canImport(AVFoundation) && !targetEnvironment(simulator) && !os(visionOS)
             let previousAudio = audioDevices
             let previousVideo = videoDevices
 
@@ -103,7 +126,7 @@ public actor DeviceDiscovery {
         #endif
     }
 
-    #if canImport(AVFoundation) && !targetEnvironment(simulator)
+    #if canImport(AVFoundation) && !targetEnvironment(simulator) && !os(visionOS)
         private func discoverAudioDevices() -> [AudioDeviceInfo] {
             let deviceTypes: [AVCaptureDevice.DeviceType] = [.microphone, .external]
             let discoverySession = AVCaptureDevice.DiscoverySession(
@@ -168,7 +191,7 @@ public actor DeviceDiscovery {
             if type == .external { return .externalUnknown }
             #if os(iOS)
                 if type == .builtInTelephotoCamera { return .telephoto }
-                if type == .builtInUltraWideCamera { return .ultraWide }
+                if type == .builtInUltraWideCamera { return .ultraWideAngle }
             #endif
             return .wideAngle
         }

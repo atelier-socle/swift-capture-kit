@@ -52,7 +52,7 @@ public actor CaptureSession {
     public private(set) var state: CaptureSessionState = .idle
 
     /// Runtime statistics (updated periodically during capture).
-    public private(set) var statistics: CaptureSessionStatistics = .zero
+    public internal(set) var statistics: CaptureSessionStatistics = .zero
 
     // MARK: - Events
 
@@ -71,16 +71,16 @@ public actor CaptureSession {
     // MARK: - Private State
 
     /// Currently attached outputs.
-    private var outputs: [any CaptureOutput] = []
+    var outputs: [any CaptureOutput] = []
 
     /// Event stream continuation for emitting events.
-    private var eventContinuation: AsyncStream<CaptureSessionEvent>.Continuation?
+    var eventContinuation: AsyncStream<CaptureSessionEvent>.Continuation?
 
     /// The background task running the capture loop.
     private var captureTask: Task<Void, Never>?
 
     /// The time capture started.
-    private var startTime: Date?
+    var startTime: Date?
 
     // MARK: - Lifecycle
 
@@ -337,28 +337,6 @@ public actor CaptureSession {
 
     // MARK: - Private Methods
 
-    /// Main capture loop — reads from sources, encodes, delivers to outputs.
-    private func runCaptureLoop() async {
-        while !Task.isCancelled && state == .capturing {
-            if let startTime = startTime {
-                statistics = CaptureSessionStatistics(
-                    uptime: Date().timeIntervalSince(startTime),
-                    audioBuffersProcessed: statistics.audioBuffersProcessed,
-                    videoFramesProcessed: statistics.videoFramesProcessed,
-                    videoFramesDropped: statistics.videoFramesDropped,
-                    audioBytesEncoded: statistics.audioBytesEncoded,
-                    videoBytesEncoded: statistics.videoBytesEncoded,
-                    currentAudioBitrate: statistics.currentAudioBitrate,
-                    currentVideoBitrate: statistics.currentVideoBitrate,
-                    currentFrameRate: statistics.currentFrameRate,
-                    cpuUsage: statistics.cpuUsage,
-                    memoryUsage: statistics.memoryUsage
-                )
-            }
-            try? await Task.sleep(for: .milliseconds(100))
-        }
-    }
-
     /// Transition state and emit event.
     private func setState(_ newState: CaptureSessionState) {
         state = newState
@@ -366,7 +344,7 @@ public actor CaptureSession {
     }
 
     /// Emit an event to all listeners.
-    private func emitEvent(_ event: CaptureSessionEvent) {
+    func emitEvent(_ event: CaptureSessionEvent) {
         eventContinuation?.yield(event)
     }
 }

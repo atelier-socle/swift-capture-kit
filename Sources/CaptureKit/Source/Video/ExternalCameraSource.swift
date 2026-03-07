@@ -121,6 +121,10 @@ public actor ExternalCameraSource: VideoSource {
             deviceType: .externalUnknown
         )
 
+        if let features = continuityCameraFeatures {
+            try? await captureEngine.applyContinuityFeatures(features)
+        }
+
         let analyzer = statsAnalyzer
         let statsContinuation = _frameStatisticsContinuation
 
