@@ -44,12 +44,16 @@ public actor FileAudioSource: AudioSource {
     /// The current configuration used for audio output.
     private var configuration: AudioSourceConfiguration
 
+    /// The audio file reader (DI — defaults to real AVAssetReader).
+    private let fileReader: any AudioFileReaderProviding
+
+    /// Overrides startTime when seek() is called.
+    private var seekTime: TimeInterval?
+
     /// The total duration of the audio file in seconds.
     ///
-    /// Returns `0.0` as a placeholder. Actual duration requires reading file metadata.
-    public var duration: TimeInterval {
-        0.0
-    }
+    /// Returns `0.0` until the file has been opened.
+    public private(set) var duration: TimeInterval = 0.0
 
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
@@ -87,6 +91,37 @@ public actor FileAudioSource: AudioSource {
         self.startTime = startTime
         self.endTime = endTime
         self.configuration = format
+        self.fileReader = SystemAudioFileReader()
+    }
+
+    /// Creates a new file audio source with an injected file reader.
+    ///
+    /// - Parameters:
+    ///   - url: The URL of the audio file.
+    ///   - playbackRate: The playback rate multiplier. Defaults to `1.0`.
+    ///   - loop: Whether to loop playback. Defaults to `false`.
+    ///   - startTime: The start time offset in seconds. Defaults to `nil`.
+    ///   - endTime: The end time offset in seconds. Defaults to `nil`.
+    ///   - format: The audio source configuration. Defaults to `.default`.
+    ///   - fileReader: The audio file reader to use.
+    init(
+        url: URL,
+        playbackRate: Double = 1.0,
+        loop: Bool = false,
+        startTime: TimeInterval? = nil,
+        endTime: TimeInterval? = nil,
+        format: AudioSourceConfiguration = .default,
+        fileReader: any AudioFileReaderProviding
+    ) {
+        self.sourceID = "file-\(UUID().uuidString.prefix(8))"
+        self.displayName = url.lastPathComponent
+        self.url = url
+        self.playbackRate = playbackRate
+        self.loop = loop
+        self.startTime = startTime
+        self.endTime = endTime
+        self.configuration = format
+        self.fileReader = fileReader
     }
 
     /// Configures this source with the given audio source configuration.
@@ -125,6 +160,8 @@ public actor FileAudioSource: AudioSource {
 
         isCapturing = true
 
+        self.duration = try await fileReader.open(url: url)
+
         let config = self.configuration
         let format = AudioFormat(
             sampleRate: config.sampleRate,
@@ -134,39 +171,42 @@ public actor FileAudioSource: AudioSource {
         )
         self.activeFormat = format
 
-        let samplesPerBuffer = Int(config.sampleRate.rawValue * config.preferredBufferDuration)
-        let bytesPerSample = config.bitDepth.byteSize
-        let bufferSize = samplesPerBuffer * config.channelCount * bytesPerSample
+        let effectiveStartTime = seekTime ?? startTime ?? 0.0
+        seekTime = nil
+
+        let request = FileReadRequest(
+            url: url,
+            outputFormat: config,
+            startTime: effectiveStartTime,
+            endTime: endTime,
+            playbackRate: playbackRate,
+            loop: loop
+        )
+        let stream = try await fileReader.readSamples(request)
 
         return AsyncStream { continuation in
-            let task = Task { @concurrent in
-                var sequenceNumber: Int64 = 0
-                let sleepDuration = config.preferredBufferDuration
-
-                while !Task.isCancelled {
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
                     let buffer = AudioBuffer(
-                        data: Data(count: bufferSize),
-                        format: format,
-                        timestamp: TimeInterval(sequenceNumber) * sleepDuration,
-                        duration: sleepDuration,
-                        sequenceNumber: sequenceNumber
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        duration: config.preferredBufferDuration,
+                        sequenceNumber: seq
                     )
                     continuation.yield(buffer)
-                    sequenceNumber += 1
-
-                    try? await Task.sleep(for: .seconds(sleepDuration))
+                    seq += 1
                 }
                 continuation.finish()
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops reading audio from the file.
     public func stopCapture() async {
+        await fileReader.stop()
         isCapturing = false
     }
 
@@ -174,8 +214,7 @@ public actor FileAudioSource: AudioSource {
     ///
     /// - Parameter time: The target time offset in seconds.
     public func seek(to time: TimeInterval) async {
-        // Placeholder: actual seeking requires audio file reader integration.
-        _ = time
+        self.seekTime = time
     }
 
     /// An async stream of audio level samples. Always finishes immediately for the file source.

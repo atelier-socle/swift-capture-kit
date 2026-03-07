@@ -81,7 +81,9 @@ import Testing
         func stopCaptureSetsIsCapturingToFalse() async throws {
             guard #available(macOS 14.0, *) else { return }
 
-            let source = SystemAudioSource()
+            let mockProvider = MockScreenCaptureAudioProvider()
+            let source = SystemAudioSource(
+                audioProvider: mockProvider)
             _ = try await source.startCapture()
             let capturing = await source.isCapturing
             #expect(capturing == true)

@@ -9,7 +9,10 @@
     @Suite("MP3Encoder")
     struct MP3EncoderTests {
         private func makeEncoder() -> MP3Encoder {
-            MP3Encoder(configuration: .standard)
+            MP3Encoder(
+                configuration: .standard,
+                encoderProvider: PassthroughAudioEncoder()
+            )
         }
 
         @Test("codec is mp3")

@@ -38,9 +38,26 @@ import Foundation
         /// Whether this encoder uses hardware acceleration.
         nonisolated public var isHardwareAccelerated: Bool { false }
 
+        /// The encoding provider (DI — defaults to real AudioToolbox).
+        private let encoderProvider: any AudioEncoderProviding
+
         /// Creates a new MP3 encoder.
         public init(configuration: MP3EncoderConfiguration = .standard) {
             self.configuration = configuration
+            #if canImport(AudioToolbox)
+                self.encoderProvider = AudioToolboxEncoder()
+            #else
+                self.encoderProvider = PassthroughAudioEncoder()
+            #endif
+        }
+
+        /// Creates a new MP3 encoder with an injected encoding provider.
+        init(
+            configuration: MP3EncoderConfiguration = .standard,
+            encoderProvider: any AudioEncoderProviding
+        ) {
+            self.configuration = configuration
+            self.encoderProvider = encoderProvider
         }
 
         /// Configures the encoder with a generic configuration.
@@ -52,6 +69,21 @@ import Foundation
             )
             try mp3Config.validate()
             self.configuration = mp3Config
+
+            let inputFormat = AudioFormat(
+                sampleRate: config.sampleRate,
+                channelCount: config.channelCount,
+                channelLayout: config.channelCount == 1
+                    ? .mono : .stereo,
+                bitDepth: .float32
+            )
+            try await encoderProvider.configure(
+                inputFormat: inputFormat,
+                outputCodec: .mp3,
+                bitrate: config.bitrate,
+                sampleRate: config.sampleRate,
+                channelCount: config.channelCount
+            )
             self.isConfigured = true
         }
 
@@ -62,8 +94,10 @@ import Foundation
                     codec: "mp3", reason: "Encoder not configured"
                 )
             }
+            let encoded = try await encoderProvider.encode(
+                data: buffer.data, timestamp: buffer.timestamp)
             return EncodedAudioBuffer(
-                data: buffer.data,
+                data: encoded,
                 codec: .mp3,
                 timestamp: buffer.timestamp,
                 duration: buffer.duration,
@@ -71,16 +105,44 @@ import Foundation
             )
         }
 
-        /// Flushes any buffered data.
-        public func flush() async throws -> [EncodedAudioBuffer] { [] }
+        /// Flushes any buffered data from the encoder.
+        public func flush() async throws -> [EncodedAudioBuffer] {
+            guard let data = try await encoderProvider.flush() else {
+                return []
+            }
+            return [
+                EncodedAudioBuffer(
+                    data: data, codec: .mp3,
+                    timestamp: 0, duration: 0, sequenceNumber: -1
+                )
+            ]
+        }
 
         /// Resets the encoder to its initial state.
-        public func reset() async { isConfigured = false }
+        public func reset() async {
+            await encoderProvider.reset()
+            isConfigured = false
+        }
 
         /// Configure with MP3-specific configuration.
         public func configure(mp3 config: MP3EncoderConfiguration) async throws {
             try config.validate()
             self.configuration = config
+
+            let inputFormat = AudioFormat(
+                sampleRate: config.sampleRate,
+                channelCount: config.channelCount,
+                channelLayout: config.channelCount == 1
+                    ? .mono : .stereo,
+                bitDepth: .float32
+            )
+            try await encoderProvider.configure(
+                inputFormat: inputFormat,
+                outputCodec: .mp3,
+                bitrate: config.bitrate,
+                sampleRate: config.sampleRate,
+                channelCount: config.channelCount
+            )
             self.isConfigured = true
         }
     }

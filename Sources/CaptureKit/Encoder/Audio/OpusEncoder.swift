@@ -34,9 +34,26 @@ public actor OpusEncoder: AudioEncoderProtocol {
     /// Whether this encoder uses hardware acceleration.
     nonisolated public var isHardwareAccelerated: Bool { false }
 
+    /// The encoding provider (DI — defaults to real AudioToolbox).
+    private let encoderProvider: any AudioEncoderProviding
+
     /// Creates a new Opus encoder.
     public init(configuration: OpusEncoderConfiguration = .musicStreaming) {
         self.configuration = configuration
+        #if canImport(AudioToolbox)
+            self.encoderProvider = AudioToolboxEncoder()
+        #else
+            self.encoderProvider = PassthroughAudioEncoder()
+        #endif
+    }
+
+    /// Creates a new Opus encoder with an injected encoding provider.
+    init(
+        configuration: OpusEncoderConfiguration = .musicStreaming,
+        encoderProvider: any AudioEncoderProviding
+    ) {
+        self.configuration = configuration
+        self.encoderProvider = encoderProvider
     }
 
     /// Configures the encoder with a generic configuration.
@@ -48,6 +65,21 @@ public actor OpusEncoder: AudioEncoderProtocol {
         )
         try opusConfig.validate()
         self.configuration = opusConfig
+
+        let inputFormat = AudioFormat(
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelCount == 1
+                ? .mono : .stereo,
+            bitDepth: .float32
+        )
+        try await encoderProvider.configure(
+            inputFormat: inputFormat,
+            outputCodec: .opus,
+            bitrate: config.bitrate,
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount
+        )
         self.isConfigured = true
     }
 
@@ -58,8 +90,10 @@ public actor OpusEncoder: AudioEncoderProtocol {
                 codec: "opus", reason: "Encoder not configured"
             )
         }
+        let encoded = try await encoderProvider.encode(
+            data: buffer.data, timestamp: buffer.timestamp)
         return EncodedAudioBuffer(
-            data: buffer.data,
+            data: encoded,
             codec: .opus,
             timestamp: buffer.timestamp,
             duration: buffer.duration,
@@ -67,16 +101,44 @@ public actor OpusEncoder: AudioEncoderProtocol {
         )
     }
 
-    /// Flushes any buffered data.
-    public func flush() async throws -> [EncodedAudioBuffer] { [] }
+    /// Flushes any buffered data from the encoder.
+    public func flush() async throws -> [EncodedAudioBuffer] {
+        guard let data = try await encoderProvider.flush() else {
+            return []
+        }
+        return [
+            EncodedAudioBuffer(
+                data: data, codec: .opus,
+                timestamp: 0, duration: 0, sequenceNumber: -1
+            )
+        ]
+    }
 
     /// Resets the encoder to its initial state.
-    public func reset() async { isConfigured = false }
+    public func reset() async {
+        await encoderProvider.reset()
+        isConfigured = false
+    }
 
     /// Configure with Opus-specific configuration.
     public func configure(opus config: OpusEncoderConfiguration) async throws {
         try config.validate()
         self.configuration = config
+
+        let inputFormat = AudioFormat(
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelCount == 1
+                ? .mono : .stereo,
+            bitDepth: .float32
+        )
+        try await encoderProvider.configure(
+            inputFormat: inputFormat,
+            outputCodec: .opus,
+            bitrate: config.bitrate,
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount
+        )
         self.isConfigured = true
     }
 }

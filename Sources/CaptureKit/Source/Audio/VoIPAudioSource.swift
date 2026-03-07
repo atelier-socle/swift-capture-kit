@@ -42,6 +42,9 @@ public actor VoIPAudioSource: AudioSource {
     /// The current configuration used for VoIP audio capture.
     private var configuration: AudioSourceConfiguration
 
+    /// The audio capture engine (DI — defaults to real AVAudioEngine).
+    private let captureEngine: any AudioCaptureProviding
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [
@@ -62,6 +65,23 @@ public actor VoIPAudioSource: AudioSource {
         self.voiceProcessingEnabled = voiceProcessingEnabled
         self.voiceIsolationEnabled = false
         self.configuration = .voiceChat
+        self.captureEngine = SystemAudioCaptureEngine()
+    }
+
+    /// Creates a new VoIP audio source with an injected capture engine.
+    ///
+    /// - Parameters:
+    ///   - voiceProcessingEnabled: Whether to enable voice processing. Defaults to `true`.
+    ///   - captureEngine: The audio capture engine to use.
+    init(
+        voiceProcessingEnabled: Bool = true,
+        captureEngine: any AudioCaptureProviding
+    ) {
+        self.sourceID = "voip-\(UUID().uuidString.prefix(8))"
+        self.voiceProcessingEnabled = voiceProcessingEnabled
+        self.voiceIsolationEnabled = false
+        self.configuration = .voiceChat
+        self.captureEngine = captureEngine
     }
 
     /// Configures this source with the given audio source configuration.
@@ -91,21 +111,48 @@ public actor VoIPAudioSource: AudioSource {
         }
         isCapturing = true
 
+        let config = configuration
         let format = AudioFormat(
-            sampleRate: configuration.sampleRate,
-            channelCount: configuration.channelCount,
-            channelLayout: configuration.channelLayout,
-            bitDepth: configuration.bitDepth
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelLayout,
+            bitDepth: config.bitDepth
         )
         self.activeFormat = format
 
+        try await captureEngine.configureAudioSession(
+            category: "playAndRecord",
+            mode: "voiceChat"
+        )
+
+        let stream = try await captureEngine.startCapture(
+            configuration: config,
+            deviceID: nil
+        )
+
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let buffer = AudioBuffer(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        duration: config.preferredBufferDuration,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(buffer)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops capturing VoIP audio.
     public func stopCapture() async {
+        await captureEngine.stopCapture()
         isCapturing = false
     }
 

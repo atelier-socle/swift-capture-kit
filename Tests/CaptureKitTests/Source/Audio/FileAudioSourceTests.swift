@@ -96,7 +96,11 @@ struct FileAudioSourceTests {
         FileManager.default.createFile(atPath: tempPath, contents: Data(count: 64))
         defer { try? FileManager.default.removeItem(atPath: tempPath) }
 
-        let source = FileAudioSource(url: URL(fileURLWithPath: tempPath))
+        let mockReader = MockAudioFileReader()
+        let source = FileAudioSource(
+            url: URL(fileURLWithPath: tempPath),
+            fileReader: mockReader
+        )
         _ = try await source.startCapture()
         await #expect(throws: CaptureError.self) {
             try await source.configure(.default)

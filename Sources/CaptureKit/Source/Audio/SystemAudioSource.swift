@@ -55,6 +55,9 @@ public actor SystemAudioSource: AudioSource {
     /// The current configuration used for system audio capture.
     private var configuration: AudioSourceConfiguration
 
+    /// The screen capture audio provider (DI — defaults to real SCStream).
+    private let audioProvider: any ScreenCaptureAudioProviding
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [
@@ -75,6 +78,27 @@ public actor SystemAudioSource: AudioSource {
         self.captureMode = mode
         self.excludeOwnApp = true
         self.configuration = .default
+        #if canImport(ScreenCaptureKit)
+            self.audioProvider = SCStreamAudioProvider()
+        #else
+            self.audioProvider = NoOpScreenCaptureAudioProvider()
+        #endif
+    }
+
+    /// Creates a new system audio source with an injected audio provider.
+    ///
+    /// - Parameters:
+    ///   - mode: The capture mode. Defaults to `.allApps`.
+    ///   - audioProvider: The screen capture audio provider to use.
+    init(
+        mode: SystemAudioCaptureMode = .allApps,
+        audioProvider: any ScreenCaptureAudioProviding
+    ) {
+        self.sourceID = "systemAudio-\(UUID().uuidString.prefix(8))"
+        self.captureMode = mode
+        self.excludeOwnApp = true
+        self.configuration = .default
+        self.audioProvider = audioProvider
     }
 
     /// Configures this source with the given audio source configuration.
@@ -104,21 +128,43 @@ public actor SystemAudioSource: AudioSource {
         }
         isCapturing = true
 
+        let config = configuration
         let format = AudioFormat(
-            sampleRate: configuration.sampleRate,
-            channelCount: configuration.channelCount,
-            channelLayout: configuration.channelLayout,
-            bitDepth: configuration.bitDepth
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelLayout,
+            bitDepth: config.bitDepth
         )
         self.activeFormat = format
 
+        let stream = try await audioProvider.startCapture(
+            mode: captureMode,
+            excludeOwnApp: excludeOwnApp
+        )
+
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let buffer = AudioBuffer(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        duration: config.preferredBufferDuration,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(buffer)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops capturing system audio.
     public func stopCapture() async {
+        await audioProvider.stopCapture()
         isCapturing = false
     }
 

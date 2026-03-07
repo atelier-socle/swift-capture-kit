@@ -32,9 +32,22 @@ public actor PCMEncoder: AudioEncoderProtocol {
     /// Whether this encoder uses hardware acceleration.
     nonisolated public var isHardwareAccelerated: Bool { false }
 
+    /// The encoding provider (DI — passthrough for PCM).
+    private let encoderProvider: any AudioEncoderProviding
+
     /// Creates a new PCM encoder.
     public init(configuration: PCMEncoderConfiguration = .broadcast) {
         self.configuration = configuration
+        self.encoderProvider = PassthroughAudioEncoder()
+    }
+
+    /// Creates a new PCM encoder with an injected encoding provider.
+    init(
+        configuration: PCMEncoderConfiguration = .broadcast,
+        encoderProvider: any AudioEncoderProviding
+    ) {
+        self.configuration = configuration
+        self.encoderProvider = encoderProvider
     }
 
     /// Configures the encoder with a generic configuration.
@@ -54,8 +67,10 @@ public actor PCMEncoder: AudioEncoderProtocol {
                 codec: "pcm", reason: "Encoder not configured"
             )
         }
+        let encoded = try await encoderProvider.encode(
+            data: buffer.data, timestamp: buffer.timestamp)
         return EncodedAudioBuffer(
-            data: buffer.data,
+            data: encoded,
             codec: .pcm,
             timestamp: buffer.timestamp,
             duration: buffer.duration,
@@ -63,11 +78,24 @@ public actor PCMEncoder: AudioEncoderProtocol {
         )
     }
 
-    /// Flushes any buffered data.
-    public func flush() async throws -> [EncodedAudioBuffer] { [] }
+    /// Flushes any buffered data from the encoder.
+    public func flush() async throws -> [EncodedAudioBuffer] {
+        guard let data = try await encoderProvider.flush() else {
+            return []
+        }
+        return [
+            EncodedAudioBuffer(
+                data: data, codec: .pcm,
+                timestamp: 0, duration: 0, sequenceNumber: -1
+            )
+        ]
+    }
 
     /// Resets the encoder to its initial state.
-    public func reset() async { isConfigured = false }
+    public func reset() async {
+        await encoderProvider.reset()
+        isConfigured = false
+    }
 
     /// Configure with PCM-specific configuration.
     public func configure(pcm config: PCMEncoderConfiguration) async throws {

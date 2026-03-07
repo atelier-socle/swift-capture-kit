@@ -32,9 +32,26 @@ public actor ALACEncoder: AudioEncoderProtocol {
     /// Whether this encoder uses hardware acceleration.
     nonisolated public var isHardwareAccelerated: Bool { false }
 
+    /// The encoding provider (DI — defaults to real AudioToolbox).
+    private let encoderProvider: any AudioEncoderProviding
+
     /// Creates a new ALAC encoder.
     public init(configuration: ALACEncoderConfiguration = .studioQuality) {
         self.configuration = configuration
+        #if canImport(AudioToolbox)
+            self.encoderProvider = AudioToolboxEncoder()
+        #else
+            self.encoderProvider = PassthroughAudioEncoder()
+        #endif
+    }
+
+    /// Creates a new ALAC encoder with an injected encoding provider.
+    init(
+        configuration: ALACEncoderConfiguration = .studioQuality,
+        encoderProvider: any AudioEncoderProviding
+    ) {
+        self.configuration = configuration
+        self.encoderProvider = encoderProvider
     }
 
     /// Configures the encoder with a generic configuration.
@@ -44,6 +61,21 @@ public actor ALACEncoder: AudioEncoderProtocol {
             channelCount: config.channelCount
         )
         self.configuration = alacConfig
+
+        let inputFormat = AudioFormat(
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelCount == 1
+                ? .mono : .stereo,
+            bitDepth: .float32
+        )
+        try await encoderProvider.configure(
+            inputFormat: inputFormat,
+            outputCodec: .alac,
+            bitrate: nil,
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount
+        )
         self.isConfigured = true
     }
 
@@ -54,8 +86,10 @@ public actor ALACEncoder: AudioEncoderProtocol {
                 codec: "alac", reason: "Encoder not configured"
             )
         }
+        let encoded = try await encoderProvider.encode(
+            data: buffer.data, timestamp: buffer.timestamp)
         return EncodedAudioBuffer(
-            data: buffer.data,
+            data: encoded,
             codec: .alac,
             timestamp: buffer.timestamp,
             duration: buffer.duration,
@@ -63,15 +97,43 @@ public actor ALACEncoder: AudioEncoderProtocol {
         )
     }
 
-    /// Flushes any buffered data.
-    public func flush() async throws -> [EncodedAudioBuffer] { [] }
+    /// Flushes any buffered data from the encoder.
+    public func flush() async throws -> [EncodedAudioBuffer] {
+        guard let data = try await encoderProvider.flush() else {
+            return []
+        }
+        return [
+            EncodedAudioBuffer(
+                data: data, codec: .alac,
+                timestamp: 0, duration: 0, sequenceNumber: -1
+            )
+        ]
+    }
 
     /// Resets the encoder to its initial state.
-    public func reset() async { isConfigured = false }
+    public func reset() async {
+        await encoderProvider.reset()
+        isConfigured = false
+    }
 
     /// Configure with ALAC-specific configuration.
     public func configure(alac config: ALACEncoderConfiguration) async throws {
         self.configuration = config
+
+        let inputFormat = AudioFormat(
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelCount == 1
+                ? .mono : .stereo,
+            bitDepth: .float32
+        )
+        try await encoderProvider.configure(
+            inputFormat: inputFormat,
+            outputCodec: .alac,
+            bitrate: nil,
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount
+        )
         self.isConfigured = true
     }
 }

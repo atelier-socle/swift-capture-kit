@@ -46,6 +46,9 @@ public actor AggregateAudioSource: AudioSource {
     /// The current configuration used for aggregate audio capture.
     private var configuration: AudioSourceConfiguration
 
+    /// The audio capture engine (DI — defaults to real AVAudioEngine).
+    private let captureEngine: any AudioCaptureProviding
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [
@@ -67,6 +70,24 @@ public actor AggregateAudioSource: AudioSource {
         self.clockSource = nil
         self.driftCompensation = true
         self.configuration = .default
+        self.captureEngine = SystemAudioCaptureEngine()
+    }
+
+    /// Creates a new aggregate audio source with an injected capture engine.
+    ///
+    /// - Parameters:
+    ///   - devices: The audio devices to combine.
+    ///   - captureEngine: The audio capture engine to use.
+    init(
+        devices: [AudioDeviceInfo],
+        captureEngine: any AudioCaptureProviding
+    ) {
+        self.sourceID = "aggregate-\(UUID().uuidString.prefix(8))"
+        self.devices = devices
+        self.clockSource = nil
+        self.driftCompensation = true
+        self.configuration = .default
+        self.captureEngine = captureEngine
     }
 
     /// Configures this source with the given audio source configuration.
@@ -104,21 +125,43 @@ public actor AggregateAudioSource: AudioSource {
         }
         isCapturing = true
 
+        let config = configuration
         let format = AudioFormat(
-            sampleRate: configuration.sampleRate,
-            channelCount: configuration.channelCount,
-            channelLayout: configuration.channelLayout,
-            bitDepth: configuration.bitDepth
+            sampleRate: config.sampleRate,
+            channelCount: config.channelCount,
+            channelLayout: config.channelLayout,
+            bitDepth: config.bitDepth
         )
         self.activeFormat = format
 
+        let stream = try await captureEngine.startCapture(
+            configuration: config,
+            deviceID: devices.first?.id
+        )
+
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let buffer = AudioBuffer(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        duration: config.preferredBufferDuration,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(buffer)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops capturing audio from the aggregate device.
     public func stopCapture() async {
+        await captureEngine.stopCapture()
         isCapturing = false
     }
 
