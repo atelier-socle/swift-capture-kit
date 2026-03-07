@@ -20,6 +20,15 @@ actor MockCaptureOutput: CaptureOutput {
     private var _receivedAudioBuffers: [EncodedAudioBuffer] = []
     private var _receivedVideoFrames: [EncodedVideoFrame] = []
 
+    /// When true, `prepare()` throws an error.
+    var shouldFailOnPrepare = false
+
+    /// When true, `receiveAudio()` throws an error.
+    var shouldFailOnReceiveAudio = false
+
+    /// When true, `receiveVideo()` throws an error.
+    var shouldFailOnReceiveVideo = false
+
     var state: CaptureOutputState { _state }
 
     init(
@@ -32,19 +41,36 @@ actor MockCaptureOutput: CaptureOutput {
         self.outputType = outputType
     }
 
-    func prepare(audioFormat: AudioFormat?, videoFormat: VideoFormat?) async throws {
+    func prepare(
+        audioFormat: AudioFormat?, videoFormat: VideoFormat?
+    ) async throws {
         prepareCallCount += 1
+        if shouldFailOnPrepare {
+            throw CaptureError.outputPrepareFailed(
+                outputID: outputID, reason: "Simulated prepare failure"
+            )
+        }
         _state = .ready
     }
 
     func receiveAudio(_ buffer: EncodedAudioBuffer) async throws {
         receiveAudioCallCount += 1
+        if shouldFailOnReceiveAudio {
+            throw CaptureError.outputWriteFailed(
+                outputID: outputID, reason: "Simulated receive failure"
+            )
+        }
         _receivedAudioBuffers.append(buffer)
         _state = .active
     }
 
     func receiveVideo(_ frame: EncodedVideoFrame) async throws {
         receiveVideoCallCount += 1
+        if shouldFailOnReceiveVideo {
+            throw CaptureError.outputWriteFailed(
+                outputID: outputID, reason: "Simulated receive failure"
+            )
+        }
         _receivedVideoFrames.append(frame)
         _state = .active
     }
@@ -54,6 +80,10 @@ actor MockCaptureOutput: CaptureOutput {
         _state = .finalized
     }
 
-    var receivedAudioBuffers: [EncodedAudioBuffer] { _receivedAudioBuffers }
-    var receivedVideoFrames: [EncodedVideoFrame] { _receivedVideoFrames }
+    var receivedAudioBuffers: [EncodedAudioBuffer] {
+        _receivedAudioBuffers
+    }
+    var receivedVideoFrames: [EncodedVideoFrame] {
+        _receivedVideoFrames
+    }
 }
