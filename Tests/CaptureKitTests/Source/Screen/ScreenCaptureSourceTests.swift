@@ -73,11 +73,11 @@ struct ScreenCaptureSourceTests {
         #if os(macOS)
             let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
             try await source.configure(.default)
-            try await source.startCapture()
+            _ = try await source.startCapture()
             await #expect(throws: CaptureError.self) {
                 try await source.configure(.default)
             }
-            try await source.stopCapture()
+            await source.stopCapture()
         #endif
     }
 
@@ -87,9 +87,9 @@ struct ScreenCaptureSourceTests {
         #if os(macOS)
             let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
             try await source.configure(.default)
-            try await source.startCapture()
+            _ = try await source.startCapture()
             #expect(await source.isCapturing == true)
-            try await source.stopCapture()
+            await source.stopCapture()
         #endif
     }
 
@@ -99,11 +99,11 @@ struct ScreenCaptureSourceTests {
         #if os(macOS)
             let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
             try await source.configure(.default)
-            try await source.startCapture()
+            _ = try await source.startCapture()
             await #expect(throws: CaptureError.self) {
                 try await source.startCapture()
             }
-            try await source.stopCapture()
+            await source.stopCapture()
         #endif
     }
 
@@ -113,8 +113,8 @@ struct ScreenCaptureSourceTests {
         #if os(macOS)
             let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
             try await source.configure(.default)
-            try await source.startCapture()
-            try await source.stopCapture()
+            _ = try await source.startCapture()
+            await source.stopCapture()
             #expect(await source.isCapturing == false)
         #endif
     }
@@ -154,7 +154,7 @@ struct ScreenCaptureSourceTests {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
         #if os(macOS)
             let source = ScreenCaptureSource(mode: .screenCaptureKit(.display(displayID: 1)))
-            let availability = await source.availability
+            let availability = source.availability
             #expect(availability.requiredPermissions.contains(.screenRecording))
         #endif
     }

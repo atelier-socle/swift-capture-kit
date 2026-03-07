@@ -56,11 +56,11 @@ struct BroadcastSourceTests {
         let config = BroadcastConfiguration(appGroupID: "group.test")
         let source = BroadcastSource(configuration: config)
         try await source.configure(.default)
-        try await source.startCapture()
+        _ = try await source.startCapture()
         await #expect(throws: CaptureError.self) {
             try await source.configure(.default)
         }
-        try await source.stopCapture()
+        await source.stopCapture()
     }
 
     @Test("startCapture connects IPC channel")
@@ -69,9 +69,9 @@ struct BroadcastSourceTests {
         let config = BroadcastConfiguration(appGroupID: "group.test")
         let source = BroadcastSource(configuration: config)
         try await source.configure(.default)
-        try await source.startCapture()
+        _ = try await source.startCapture()
         #expect(await source.ipcChannel.isConnected == true)
-        try await source.stopCapture()
+        await source.stopCapture()
     }
 
     @Test("startCapture sets isCapturing to true")
@@ -80,9 +80,9 @@ struct BroadcastSourceTests {
         let config = BroadcastConfiguration(appGroupID: "group.test")
         let source = BroadcastSource(configuration: config)
         try await source.configure(.default)
-        try await source.startCapture()
+        _ = try await source.startCapture()
         #expect(await source.isCapturing == true)
-        try await source.stopCapture()
+        await source.stopCapture()
     }
 
     @Test("stopCapture disconnects IPC channel")
@@ -91,8 +91,8 @@ struct BroadcastSourceTests {
         let config = BroadcastConfiguration(appGroupID: "group.test")
         let source = BroadcastSource(configuration: config)
         try await source.configure(.default)
-        try await source.startCapture()
-        try await source.stopCapture()
+        _ = try await source.startCapture()
+        await source.stopCapture()
         #expect(await source.ipcChannel.isConnected == false)
     }
 
@@ -101,7 +101,7 @@ struct BroadcastSourceTests {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
         let config = BroadcastConfiguration(appGroupID: "group.test")
         let source = BroadcastSource(configuration: config)
-        let availability = await source.availability
+        let availability = source.availability
         #expect(availability.notes?.contains("Broadcast") == true)
     }
 }
