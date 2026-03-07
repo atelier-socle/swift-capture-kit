@@ -74,6 +74,15 @@ public struct AudioSourceConfiguration: Sendable, Equatable {
         preferredBufferDuration: 0.02
     )
 
+    /// Voice chat configuration: 16 kHz, mono, float32, 20 ms buffers.
+    public static let voiceChat = AudioSourceConfiguration(
+        sampleRate: .rate16000,
+        channelCount: 1,
+        channelLayout: .mono,
+        bitDepth: .float32,
+        preferredBufferDuration: 0.02
+    )
+
     /// Spatial audio configuration: 48 kHz, 4-channel ambisonic FOA, float32, 20 ms buffers.
     public static let spatialAudio = AudioSourceConfiguration(
         sampleRate: .rate48000,

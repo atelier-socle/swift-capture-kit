@@ -37,4 +37,14 @@ public enum AudioBitDepth: String, Sendable, CaseIterable {
 
     /// 64-bit IEEE 754 floating-point.
     case float64
+
+    /// The number of bytes required to store a single sample in this format.
+    public var byteSize: Int {
+        switch self {
+        case .int16: return 2
+        case .int24: return 3
+        case .int32, .float32: return 4
+        case .float64: return 8
+        }
+    }
 }
