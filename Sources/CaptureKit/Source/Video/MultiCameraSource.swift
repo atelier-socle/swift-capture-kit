@@ -51,6 +51,9 @@ public actor MultiCameraSource: VideoSource {
     /// The current configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// The capture engine used for video capture.
+    private let captureEngine: any VideoCaptureProviding
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -63,6 +66,23 @@ public actor MultiCameraSource: VideoSource {
         self.sourceID = "multicam-\(UUID().uuidString.prefix(8))"
         self.multiCameraConfiguration = configuration
         self.configuration = .default
+        #if os(visionOS)
+            self.captureEngine = VisionOSVideoCaptureEngine()
+        #else
+            self.captureEngine = SystemVideoCaptureEngine()
+        #endif
+    }
+
+    /// Creates a new multi-camera source with an injected capture engine (for testing).
+    ///
+    /// - Parameters:
+    ///   - configuration: The multi-camera configuration.
+    ///   - captureEngine: The capture engine to use.
+    init(configuration: MultiCameraConfiguration, captureEngine: any VideoCaptureProviding) {
+        self.sourceID = "multicam-\(UUID().uuidString.prefix(8))"
+        self.multiCameraConfiguration = configuration
+        self.configuration = .default
+        self.captureEngine = captureEngine
     }
 
     /// Configures this source with the given video source configuration.
@@ -90,15 +110,38 @@ public actor MultiCameraSource: VideoSource {
         }
         try multiCameraConfiguration.validate()
         isCapturing = true
-        self.activeFormat = makeFormat(from: configuration)
+        let config = self.configuration
+        self.activeFormat = makeFormat(from: config)
+
+        let stream = try await captureEngine.startCapture(
+            configuration: config,
+            position: .back,
+            deviceType: .wideAngle
+        )
 
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let frame = VideoFrame(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        isKeyFrame: sample.isKeyFrame,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(frame)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops the current video capture.
     public func stopCapture() async {
+        await captureEngine.stopCapture()
         isCapturing = false
     }
 
@@ -115,11 +158,34 @@ public actor MultiCameraSource: VideoSource {
     /// - Returns: An asynchronous stream of video frames from the specified camera.
     /// - Throws: ``CaptureError/deviceNotFound(deviceID:)`` if the label is not found.
     public func stream(for label: String) async throws -> AsyncStream<VideoFrame> {
-        guard multiCameraConfiguration.cameras.contains(where: { $0.label == label }) else {
+        guard let camera = multiCameraConfiguration.cameras.first(where: { $0.label == label }) else {
             throw CaptureError.deviceNotFound(deviceID: label)
         }
+
+        let config = self.configuration
+        let stream = try await captureEngine.startCapture(
+            configuration: config,
+            position: camera.device.position,
+            deviceType: camera.device.deviceType
+        )
+
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let frame = VideoFrame(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        isKeyFrame: sample.isKeyFrame,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(frame)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

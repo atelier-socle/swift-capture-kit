@@ -73,7 +73,7 @@ struct CinematicCameraSourceTests {
     func startAndStopCaptureStateTransitions() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = CinematicCameraSource()
+        let source = CinematicCameraSource(captureEngine: MockVideoCaptureEngine())
 
         let initialCapturing = await source.isCapturing
         #expect(initialCapturing == false)

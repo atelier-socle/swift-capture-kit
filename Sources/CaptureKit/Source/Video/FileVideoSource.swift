@@ -48,6 +48,12 @@ public actor FileVideoSource: VideoSource {
     /// The current configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// The file reader used for video file reading.
+    private let fileReader: any VideoFileReaderProviding
+
+    /// Cached file duration in seconds.
+    public private(set) var fileDuration: TimeInterval = 0.0
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -66,6 +72,25 @@ public actor FileVideoSource: VideoSource {
         self.endTime = nil
         self.includeAudio = false
         self.configuration = .default
+        self.fileReader = SystemVideoFileReader()
+    }
+
+    /// Creates a new file video source with an injected file reader (for testing).
+    ///
+    /// - Parameters:
+    ///   - url: The URL of the video file.
+    ///   - fileReader: The file reader to use.
+    init(url: URL, fileReader: any VideoFileReaderProviding) {
+        self.sourceID = "file-video-\(UUID().uuidString.prefix(8))"
+        self.displayName = url.lastPathComponent
+        self.url = url
+        self.playbackRate = 1.0
+        self.loop = false
+        self.startTime = 0
+        self.endTime = nil
+        self.includeAudio = false
+        self.configuration = .default
+        self.fileReader = fileReader
     }
 
     /// Configures this source with the given video source configuration.
@@ -101,13 +126,40 @@ public actor FileVideoSource: VideoSource {
         let format = makeFormat(from: configuration)
         self.activeFormat = format
 
+        self.fileDuration = try await fileReader.open(url: url)
+
+        let stream = try await fileReader.readFrames(
+            from: url,
+            outputFormat: configuration,
+            startTime: startTime,
+            endTime: endTime,
+            playbackRate: playbackRate,
+            loop: loop
+        )
+
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let frame = VideoFrame(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        isKeyFrame: sample.isKeyFrame,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(frame)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops the current video capture.
     public func stopCapture() async {
+        await fileReader.stop()
         isCapturing = false
     }
 
@@ -129,7 +181,9 @@ public actor FileVideoSource: VideoSource {
                     reason: "File not found: \(url.lastPathComponent)"
                 )
             }
-            return 0
+            if fileDuration > 0 { return fileDuration }
+            fileDuration = try await fileReader.open(url: url)
+            return fileDuration
         }
     }
 

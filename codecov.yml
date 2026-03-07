@@ -9,3 +9,14 @@ coverage:
     patch:
       default:
         target: 90%
+
+ignore:
+  # Session 11 — Real Apple audio framework implementations (require hardware)
+  - "Sources/CaptureKit/Source/Audio/SystemAudioCaptureEngine.swift"
+  - "Sources/CaptureKit/Source/Audio/SystemAudioFileReader.swift"
+  - "Sources/CaptureKit/Source/Audio/SCStreamAudioProvider.swift"
+  - "Sources/CaptureKit/Encoder/Audio/AudioToolboxEncoder.swift"
+  # Session 12 — Real Apple video framework implementations (require hardware)
+  - "Sources/CaptureKit/Source/Video/SystemVideoCaptureEngine.swift"
+  - "Sources/CaptureKit/Source/Video/SystemVideoFileReader.swift"
+  - "Sources/CaptureKit/Encoder/Video/VideoToolboxEncoder.swift"

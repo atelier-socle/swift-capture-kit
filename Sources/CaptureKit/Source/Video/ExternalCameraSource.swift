@@ -41,6 +41,9 @@ public actor ExternalCameraSource: VideoSource {
     /// The current configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// The capture engine used for video capture.
+    private let captureEngine: any VideoCaptureProviding
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -55,6 +58,25 @@ public actor ExternalCameraSource: VideoSource {
         self.selectedDevice = device
         self.continuityCameraFeatures = nil
         self.configuration = .default
+        #if os(visionOS)
+            self.captureEngine = VisionOSVideoCaptureEngine()
+        #else
+            self.captureEngine = SystemVideoCaptureEngine()
+        #endif
+    }
+
+    /// Creates a new external camera source with an injected capture engine (for testing).
+    ///
+    /// - Parameters:
+    ///   - device: The video device info for the external camera.
+    ///   - captureEngine: The capture engine to use.
+    init(device: VideoDeviceInfo, captureEngine: any VideoCaptureProviding) {
+        self.sourceID = "external-\(UUID().uuidString.prefix(8))"
+        self.displayName = device.name
+        self.selectedDevice = device
+        self.continuityCameraFeatures = nil
+        self.configuration = .default
+        self.captureEngine = captureEngine
     }
 
     /// Configures this source with the given video source configuration.
@@ -78,15 +100,38 @@ public actor ExternalCameraSource: VideoSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
-        self.activeFormat = makeFormat(from: configuration)
+        let config = self.configuration
+        self.activeFormat = makeFormat(from: config)
+
+        let stream = try await captureEngine.startCapture(
+            configuration: config,
+            position: .unspecified,
+            deviceType: .externalUnknown
+        )
 
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let frame = VideoFrame(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        isKeyFrame: sample.isKeyFrame,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(frame)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops the current video capture.
     public func stopCapture() async {
+        await captureEngine.stopCapture()
         isCapturing = false
     }
 

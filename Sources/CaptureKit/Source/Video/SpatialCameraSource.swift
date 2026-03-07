@@ -41,6 +41,9 @@
         /// The current configuration.
         private var configuration: VideoSourceConfiguration
 
+        /// The capture engine used for video capture.
+        private let captureEngine: any VideoCaptureProviding
+
         /// The video formats supported by this source.
         public var supportedFormats: [VideoFormat] {
             [makeFormat(from: configuration)]
@@ -53,6 +56,19 @@
             self.sourceID = "spatial-\(UUID().uuidString.prefix(8))"
             self.spatialMode = mode
             self.configuration = .spatialVideo
+            self.captureEngine = VisionOSVideoCaptureEngine()
+        }
+
+        /// Creates a new spatial camera source with an injected capture engine (for testing).
+        ///
+        /// - Parameters:
+        ///   - mode: The spatial capture mode. Defaults to `.stereoscopic`.
+        ///   - captureEngine: The capture engine to use.
+        init(mode: SpatialCaptureMode = .stereoscopic, captureEngine: any VideoCaptureProviding) {
+            self.sourceID = "spatial-\(UUID().uuidString.prefix(8))"
+            self.spatialMode = mode
+            self.configuration = .spatialVideo
+            self.captureEngine = captureEngine
         }
 
         /// Configures this source with the given video source configuration.
@@ -76,15 +92,38 @@
                 throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
             }
             isCapturing = true
-            self.activeFormat = makeFormat(from: configuration)
+            let config = self.configuration
+            self.activeFormat = makeFormat(from: config)
+
+            let stream = try await captureEngine.startCapture(
+                configuration: config,
+                position: .back,
+                deviceType: .wideAngle
+            )
 
             return AsyncStream { continuation in
-                continuation.finish()
+                let task = Task {
+                    var seq: Int64 = 0
+                    for await sample in stream {
+                        let frame = VideoFrame(
+                            data: sample.data,
+                            format: sample.format,
+                            timestamp: sample.timestamp,
+                            isKeyFrame: sample.isKeyFrame,
+                            sequenceNumber: seq
+                        )
+                        continuation.yield(frame)
+                        seq += 1
+                    }
+                    continuation.finish()
+                }
+                continuation.onTermination = { _ in task.cancel() }
             }
         }
 
         /// Stops the current video capture.
         public func stopCapture() async {
+            await captureEngine.stopCapture()
             isCapturing = false
         }
 

@@ -10,7 +10,7 @@ import Testing
 struct H264EncoderTests {
 
     private func makeEncoder() -> H264Encoder {
-        H264Encoder()
+        H264Encoder(encoderProvider: MockVideoEncoderProvider())
     }
 
     private func makeFrame(isKeyFrame: Bool = true) -> VideoFrame {

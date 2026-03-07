@@ -62,6 +62,9 @@ public actor CameraSource: VideoSource {
     /// The current configuration.
     private var configuration: VideoSourceConfiguration
 
+    /// The capture engine used for video capture.
+    private let captureEngine: any VideoCaptureProviding
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -79,6 +82,28 @@ public actor CameraSource: VideoSource {
         self.depthDataDelivery = false
         self.captureControlEnabled = false
         self.configuration = .default
+        #if os(visionOS)
+            self.captureEngine = VisionOSVideoCaptureEngine()
+        #else
+            self.captureEngine = SystemVideoCaptureEngine()
+        #endif
+    }
+
+    /// Creates a new camera source with an injected capture engine (for testing).
+    ///
+    /// - Parameters:
+    ///   - position: The camera position. Defaults to `.back`.
+    ///   - captureEngine: The capture engine to use.
+    init(position: CameraPosition = .back, captureEngine: any VideoCaptureProviding) {
+        self.sourceID = "camera-\(UUID().uuidString.prefix(8))"
+        self.position = position
+        self.deviceType = .wideAngle
+        self.torchMode = .off
+        self.zoomFactor = 1.0
+        self.depthDataDelivery = false
+        self.captureControlEnabled = false
+        self.configuration = .default
+        self.captureEngine = captureEngine
     }
 
     /// Configures this source with the given video source configuration.
@@ -102,15 +127,38 @@ public actor CameraSource: VideoSource {
             throw CaptureError.sourceAlreadyCapturing(sourceID: sourceID)
         }
         isCapturing = true
-        self.activeFormat = makeFormat(from: configuration)
+        let config = self.configuration
+        self.activeFormat = makeFormat(from: config)
+
+        let stream = try await captureEngine.startCapture(
+            configuration: config,
+            position: position,
+            deviceType: deviceType
+        )
 
         return AsyncStream { continuation in
-            continuation.finish()
+            let task = Task {
+                var seq: Int64 = 0
+                for await sample in stream {
+                    let frame = VideoFrame(
+                        data: sample.data,
+                        format: sample.format,
+                        timestamp: sample.timestamp,
+                        isKeyFrame: sample.isKeyFrame,
+                        sequenceNumber: seq
+                    )
+                    continuation.yield(frame)
+                    seq += 1
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     /// Stops the current video capture.
     public func stopCapture() async {
+        await captureEngine.stopCapture()
         isCapturing = false
     }
 
@@ -125,6 +173,7 @@ public actor CameraSource: VideoSource {
     ///
     /// - Parameter position: The new camera position.
     public func switchCamera(to position: CameraPosition) async throws {
+        try await captureEngine.switchCamera(to: position)
         self.position = position
     }
 
@@ -134,10 +183,7 @@ public actor CameraSource: VideoSource {
     /// - Returns: The captured photo.
     /// - Throws: ``CaptureError/sourceNotAvailable(sourceType:reason:)`` as hardware is required.
     public func capturePhoto(settings: PhotoCaptureSettings? = nil) async throws -> CapturedPhoto {
-        throw CaptureError.sourceNotAvailable(
-            sourceType: "camera",
-            reason: "Photo capture requires hardware camera"
-        )
+        try await captureEngine.capturePhoto(settings: settings)
     }
 
     private func makeFormat(from config: VideoSourceConfiguration) -> VideoFormat {

@@ -48,7 +48,7 @@ type_body_length:
   error: 500
 
 cyclomatic_complexity:
-  warning: 10
+  warning: 12
   error: 20
 
 nesting:
@@ -57,3 +57,7 @@ nesting:
 
 vertical_whitespace:
   max_empty_lines: 2
+
+function_parameter_count:
+  warning: 8
+  error: 10

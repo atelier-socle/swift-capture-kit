@@ -20,6 +20,8 @@ public actor AV1Encoder: VideoEncoderProtocol {
     public private(set) var isConfigured: Bool = false
     /// Whether a keyframe has been requested for the next frame.
     private var pendingKeyFrame: Bool = false
+    /// The underlying encoder provider (VideoToolbox or passthrough).
+    private let encoderProvider: any VideoEncoderProviding
 
     // MARK: - Protocol Computed Properties
 
@@ -53,6 +55,17 @@ public actor AV1Encoder: VideoEncoderProtocol {
     /// Creates a new encoder with the given configuration.
     public init(configuration: AV1EncoderConfiguration = .streaming1080p) {
         self.configuration = configuration
+        #if canImport(VideoToolbox)
+            self.encoderProvider = VideoToolboxEncoder()
+        #else
+            self.encoderProvider = PassthroughVideoEncoder()
+        #endif
+    }
+
+    /// Creates a new encoder with an injected provider (for testing).
+    init(configuration: AV1EncoderConfiguration = .streaming1080p, encoderProvider: any VideoEncoderProviding) {
+        self.configuration = configuration
+        self.encoderProvider = encoderProvider
     }
 
     // MARK: - VideoEncoderProtocol
@@ -65,6 +78,17 @@ public actor AV1Encoder: VideoEncoderProtocol {
             realTime: config.realTime
         )
         self.configuration = av1Config
+
+        try await encoderProvider.configure(
+            width: config.resolution.width,
+            height: config.resolution.height,
+            codec: .av1,
+            bitrate: config.bitrate,
+            frameRate: config.frameRate.value,
+            keyFrameInterval: config.keyFrameInterval,
+            realTime: config.realTime,
+            profileLevel: configuration.profile.rawValue
+        )
         self.isConfigured = true
     }
 
@@ -77,22 +101,33 @@ public actor AV1Encoder: VideoEncoderProtocol {
             )
         }
 
-        return EncodedVideoFrame(
+        let isKey = frame.isKeyFrame || pendingKeyFrame
+        let encoded = try await encoderProvider.encode(
             data: frame.data,
+            width: frame.format.resolution.width,
+            height: frame.format.resolution.height,
+            timestamp: frame.timestamp,
+            isKeyFrame: isKey
+        )
+        pendingKeyFrame = false
+        return EncodedVideoFrame(
+            data: encoded,
             codec: codec,
             timestamp: frame.timestamp,
-            isKeyFrame: frame.isKeyFrame || pendingKeyFrame,
+            isKeyFrame: isKey,
             sequenceNumber: frame.sequenceNumber
         )
     }
 
     /// Requests the next encoded frame to be a keyframe.
     public func forceKeyFrame() async throws {
+        try await encoderProvider.forceKeyFrame()
         pendingKeyFrame = true
     }
 
     /// Updates the target bitrate dynamically.
     public func updateBitrate(_ bitrate: Int) async throws {
+        try await encoderProvider.updateBitrate(bitrate)
         self.configuration = AV1EncoderConfiguration(
             bitrate: bitrate,
             keyFrameInterval: configuration.keyFrameInterval,
@@ -102,11 +137,20 @@ public actor AV1Encoder: VideoEncoderProtocol {
 
     /// Flushes any buffered frames.
     public func flush() async throws -> [EncodedVideoFrame] {
-        []
+        guard let data = try await encoderProvider.flush() else {
+            return []
+        }
+        return [
+            EncodedVideoFrame(
+                data: data, codec: codec,
+                timestamp: 0, isKeyFrame: false, sequenceNumber: -1
+            )
+        ]
     }
 
     /// Resets the encoder to its unconfigured state.
     public func reset() async {
+        await encoderProvider.reset()
         isConfigured = false
         pendingKeyFrame = false
     }
@@ -116,6 +160,16 @@ public actor AV1Encoder: VideoEncoderProtocol {
     /// Configures with AV1-specific settings.
     public func configure(av1 config: AV1EncoderConfiguration) async throws {
         self.configuration = config
+
+        try await encoderProvider.configure(
+            width: 1920, height: 1080,
+            codec: .av1,
+            bitrate: config.bitrate,
+            frameRate: 30.0,
+            keyFrameInterval: config.keyFrameInterval,
+            realTime: config.realTime,
+            profileLevel: config.profile.rawValue
+        )
         self.isConfigured = true
     }
 }

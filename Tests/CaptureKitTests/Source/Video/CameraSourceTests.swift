@@ -68,7 +68,7 @@ struct CameraSourceTests {
     func configureWhileCapturingThrows() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = CameraSource()
+        let source = CameraSource(captureEngine: MockVideoCaptureEngine())
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)
@@ -82,7 +82,7 @@ struct CameraSourceTests {
     func startCaptureSetsIsCapturing() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = CameraSource()
+        let source = CameraSource(captureEngine: MockVideoCaptureEngine())
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)
@@ -92,7 +92,7 @@ struct CameraSourceTests {
     func stopCaptureSetsIsCapturingToFalse() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = CameraSource()
+        let source = CameraSource(captureEngine: MockVideoCaptureEngine())
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)
@@ -106,7 +106,7 @@ struct CameraSourceTests {
     func switchCameraChangesPosition() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = CameraSource()
+        let source = CameraSource(captureEngine: MockVideoCaptureEngine())
         let initial = await source.position
         #expect(initial == .back)
 
@@ -128,7 +128,7 @@ struct CameraSourceTests {
     func capturePhotoThrowsWithoutHardware() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = CameraSource()
+        let source = CameraSource(captureEngine: MockVideoCaptureEngine())
         await #expect(throws: CaptureError.self) {
             _ = try await source.capturePhoto()
         }

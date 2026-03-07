@@ -48,7 +48,7 @@
 
         @Test("startCapture and stopCapture state transitions")
         func startAndStopCaptureStateTransitions() async throws {
-            let source = SpatialCameraSource()
+            let source = SpatialCameraSource(captureEngine: MockVideoCaptureEngine())
 
             let initialCapturing = await source.isCapturing
             #expect(initialCapturing == false)

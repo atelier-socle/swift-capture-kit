@@ -10,7 +10,7 @@ import Testing
 struct HEVCEncoderTests {
 
     private func makeEncoder() -> HEVCEncoder {
-        HEVCEncoder()
+        HEVCEncoder(encoderProvider: MockVideoEncoderProvider())
     }
 
     private func makeFrame(isKeyFrame: Bool = true) -> VideoFrame {

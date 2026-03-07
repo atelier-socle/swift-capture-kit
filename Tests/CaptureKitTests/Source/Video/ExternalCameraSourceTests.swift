@@ -65,7 +65,7 @@ struct ExternalCameraSourceTests {
     func startCaptureSetsIsCapturing() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
 
-        let source = ExternalCameraSource(device: makeDevice())
+        let source = ExternalCameraSource(device: makeDevice(), captureEngine: MockVideoCaptureEngine())
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)
@@ -75,7 +75,7 @@ struct ExternalCameraSourceTests {
     func stopCaptureSetsIsCapturingToFalse() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
 
-        let source = ExternalCameraSource(device: makeDevice())
+        let source = ExternalCameraSource(device: makeDevice(), captureEngine: MockVideoCaptureEngine())
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)

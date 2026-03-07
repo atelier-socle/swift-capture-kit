@@ -10,7 +10,7 @@ import Testing
 struct JPEGEncoderTests {
 
     private func makeEncoder() -> JPEGEncoder {
-        JPEGEncoder()
+        JPEGEncoder(encoderProvider: MockVideoEncoderProvider())
     }
 
     private func makeFrame(isKeyFrame: Bool = true) -> VideoFrame {

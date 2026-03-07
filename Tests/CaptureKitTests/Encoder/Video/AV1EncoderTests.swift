@@ -10,7 +10,7 @@ import Testing
 struct AV1EncoderTests {
 
     private func makeEncoder() -> AV1Encoder {
-        AV1Encoder()
+        AV1Encoder(encoderProvider: MockVideoEncoderProvider())
     }
 
     private func makeFrame(isKeyFrame: Bool = true) -> VideoFrame {

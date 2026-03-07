@@ -102,7 +102,7 @@ struct MultiCameraSourceTests {
     func streamForKnownLabelSucceeds() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
 
-        let source = MultiCameraSource(configuration: makeValidConfig())
+        let source = MultiCameraSource(configuration: makeValidConfig(), captureEngine: MockVideoCaptureEngine())
         let stream = try await source.stream(for: "host")
         // Stream should be returned without throwing.
         _ = stream
@@ -112,7 +112,7 @@ struct MultiCameraSourceTests {
     func startAndStopCaptureStateTransitions() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
 
-        let source = MultiCameraSource(configuration: makeValidConfig())
+        let source = MultiCameraSource(configuration: makeValidConfig(), captureEngine: MockVideoCaptureEngine())
 
         let initialCapturing = await source.isCapturing
         #expect(initialCapturing == false)

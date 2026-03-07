@@ -20,6 +20,8 @@ public actor HEVCEncoder: VideoEncoderProtocol {
     public private(set) var isConfigured: Bool = false
     /// Whether a keyframe has been requested for the next frame.
     private var pendingKeyFrame: Bool = false
+    /// The underlying encoder provider (VideoToolbox or passthrough).
+    private let encoderProvider: any VideoEncoderProviding
 
     // MARK: - Protocol Computed Properties
 
@@ -53,6 +55,17 @@ public actor HEVCEncoder: VideoEncoderProtocol {
     /// Creates a new encoder with the given configuration.
     public init(configuration: HEVCEncoderConfiguration = .streaming1080p) {
         self.configuration = configuration
+        #if canImport(VideoToolbox)
+            self.encoderProvider = VideoToolboxEncoder()
+        #else
+            self.encoderProvider = PassthroughVideoEncoder()
+        #endif
+    }
+
+    /// Creates a new encoder with an injected provider (for testing).
+    init(configuration: HEVCEncoderConfiguration = .streaming1080p, encoderProvider: any VideoEncoderProviding) {
+        self.configuration = configuration
+        self.encoderProvider = encoderProvider
     }
 
     // MARK: - VideoEncoderProtocol
@@ -66,6 +79,17 @@ public actor HEVCEncoder: VideoEncoderProtocol {
         )
         try hevcConfig.validate()
         self.configuration = hevcConfig
+
+        try await encoderProvider.configure(
+            width: config.resolution.width,
+            height: config.resolution.height,
+            codec: .hevc,
+            bitrate: config.bitrate,
+            frameRate: config.frameRate.value,
+            keyFrameInterval: config.keyFrameInterval,
+            realTime: config.realTime,
+            profileLevel: configuration.profile.rawValue
+        )
         self.isConfigured = true
     }
 
@@ -78,22 +102,33 @@ public actor HEVCEncoder: VideoEncoderProtocol {
             )
         }
 
-        return EncodedVideoFrame(
+        let isKey = frame.isKeyFrame || pendingKeyFrame
+        let encoded = try await encoderProvider.encode(
             data: frame.data,
+            width: frame.format.resolution.width,
+            height: frame.format.resolution.height,
+            timestamp: frame.timestamp,
+            isKeyFrame: isKey
+        )
+        pendingKeyFrame = false
+        return EncodedVideoFrame(
+            data: encoded,
             codec: codec,
             timestamp: frame.timestamp,
-            isKeyFrame: frame.isKeyFrame || pendingKeyFrame,
+            isKeyFrame: isKey,
             sequenceNumber: frame.sequenceNumber
         )
     }
 
     /// Requests the next encoded frame to be a keyframe.
     public func forceKeyFrame() async throws {
+        try await encoderProvider.forceKeyFrame()
         pendingKeyFrame = true
     }
 
     /// Updates the target bitrate dynamically.
     public func updateBitrate(_ bitrate: Int) async throws {
+        try await encoderProvider.updateBitrate(bitrate)
         self.configuration = HEVCEncoderConfiguration(
             bitrate: bitrate,
             keyFrameInterval: configuration.keyFrameInterval,
@@ -103,11 +138,20 @@ public actor HEVCEncoder: VideoEncoderProtocol {
 
     /// Flushes any buffered frames.
     public func flush() async throws -> [EncodedVideoFrame] {
-        []
+        guard let data = try await encoderProvider.flush() else {
+            return []
+        }
+        return [
+            EncodedVideoFrame(
+                data: data, codec: codec,
+                timestamp: 0, isKeyFrame: false, sequenceNumber: -1
+            )
+        ]
     }
 
     /// Resets the encoder to its unconfigured state.
     public func reset() async {
+        await encoderProvider.reset()
         isConfigured = false
         pendingKeyFrame = false
     }
@@ -118,6 +162,16 @@ public actor HEVCEncoder: VideoEncoderProtocol {
     public func configure(hevc config: HEVCEncoderConfiguration) async throws {
         try config.validate()
         self.configuration = config
+
+        try await encoderProvider.configure(
+            width: 1920, height: 1080,
+            codec: .hevc,
+            bitrate: config.bitrate,
+            frameRate: 30.0,
+            keyFrameInterval: config.keyFrameInterval,
+            realTime: config.realTime,
+            profileLevel: config.profile.rawValue
+        )
         self.isConfigured = true
     }
 }

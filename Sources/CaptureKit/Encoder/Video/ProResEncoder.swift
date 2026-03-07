@@ -20,6 +20,8 @@ public actor ProResEncoder: VideoEncoderProtocol {
     public private(set) var isConfigured: Bool = false
     /// Whether a keyframe has been requested for the next frame.
     private var pendingKeyFrame: Bool = false
+    /// The underlying encoder provider (VideoToolbox or passthrough).
+    private let encoderProvider: any VideoEncoderProviding
 
     // MARK: - Protocol Computed Properties
 
@@ -53,6 +55,17 @@ public actor ProResEncoder: VideoEncoderProtocol {
     /// Creates a new encoder with the given configuration.
     public init(configuration: ProResEncoderConfiguration = .hq) {
         self.configuration = configuration
+        #if canImport(VideoToolbox)
+            self.encoderProvider = VideoToolboxEncoder()
+        #else
+            self.encoderProvider = PassthroughVideoEncoder()
+        #endif
+    }
+
+    /// Creates a new encoder with an injected provider (for testing).
+    init(configuration: ProResEncoderConfiguration = .hq, encoderProvider: any VideoEncoderProviding) {
+        self.configuration = configuration
+        self.encoderProvider = encoderProvider
     }
 
     // MARK: - VideoEncoderProtocol
@@ -63,6 +76,17 @@ public actor ProResEncoder: VideoEncoderProtocol {
             realTime: config.realTime
         )
         self.configuration = proresConfig
+
+        try await encoderProvider.configure(
+            width: config.resolution.width,
+            height: config.resolution.height,
+            codec: .prores,
+            bitrate: nil,
+            frameRate: config.frameRate.value,
+            keyFrameInterval: nil,
+            realTime: config.realTime,
+            profileLevel: configuration.profile.rawValue
+        )
         self.isConfigured = true
     }
 
@@ -75,8 +99,15 @@ public actor ProResEncoder: VideoEncoderProtocol {
             )
         }
 
-        return EncodedVideoFrame(
+        let encoded = try await encoderProvider.encode(
             data: frame.data,
+            width: frame.format.resolution.width,
+            height: frame.format.resolution.height,
+            timestamp: frame.timestamp,
+            isKeyFrame: true
+        )
+        return EncodedVideoFrame(
+            data: encoded,
             codec: codec,
             timestamp: frame.timestamp,
             isKeyFrame: true,
@@ -87,20 +118,31 @@ public actor ProResEncoder: VideoEncoderProtocol {
     /// Requests the next encoded frame to be a keyframe.
     public func forceKeyFrame() async throws {
         // No-op: ProRes is an intra-only codec, every frame is a keyframe.
+        try await encoderProvider.forceKeyFrame()
     }
 
     /// Updates the target bitrate dynamically.
     public func updateBitrate(_ bitrate: Int) async throws {
         // No-op: bitrate is determined by the ProRes profile.
+        try await encoderProvider.updateBitrate(bitrate)
     }
 
     /// Flushes any buffered frames.
     public func flush() async throws -> [EncodedVideoFrame] {
-        []
+        guard let data = try await encoderProvider.flush() else {
+            return []
+        }
+        return [
+            EncodedVideoFrame(
+                data: data, codec: codec,
+                timestamp: 0, isKeyFrame: false, sequenceNumber: -1
+            )
+        ]
     }
 
     /// Resets the encoder to its unconfigured state.
     public func reset() async {
+        await encoderProvider.reset()
         isConfigured = false
         pendingKeyFrame = false
     }
@@ -110,6 +152,16 @@ public actor ProResEncoder: VideoEncoderProtocol {
     /// Configures with ProRes-specific settings.
     public func configure(prores config: ProResEncoderConfiguration) async throws {
         self.configuration = config
+
+        try await encoderProvider.configure(
+            width: 1920, height: 1080,
+            codec: .prores,
+            bitrate: nil,
+            frameRate: 30.0,
+            keyFrameInterval: nil,
+            realTime: config.realTime,
+            profileLevel: config.profile.rawValue
+        )
         self.isConfigured = true
     }
 }

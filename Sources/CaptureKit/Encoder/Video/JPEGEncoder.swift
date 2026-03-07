@@ -21,6 +21,8 @@ public actor JPEGEncoder: VideoEncoderProtocol {
     public private(set) var isConfigured: Bool = false
     /// Whether a keyframe has been requested for the next frame.
     private var pendingKeyFrame: Bool = false
+    /// The underlying encoder provider (VideoToolbox or passthrough).
+    private let encoderProvider: any VideoEncoderProviding
 
     // MARK: - Protocol Computed Properties
 
@@ -54,6 +56,17 @@ public actor JPEGEncoder: VideoEncoderProtocol {
     /// Creates a new encoder with the given configuration.
     public init(configuration: JPEGEncoderConfiguration = .standard) {
         self.configuration = configuration
+        #if canImport(VideoToolbox)
+            self.encoderProvider = VideoToolboxEncoder()
+        #else
+            self.encoderProvider = PassthroughVideoEncoder()
+        #endif
+    }
+
+    /// Creates a new encoder with an injected provider (for testing).
+    init(configuration: JPEGEncoderConfiguration = .standard, encoderProvider: any VideoEncoderProviding) {
+        self.configuration = configuration
+        self.encoderProvider = encoderProvider
     }
 
     // MARK: - VideoEncoderProtocol
@@ -65,6 +78,17 @@ public actor JPEGEncoder: VideoEncoderProtocol {
         )
         try jpegConfig.validate()
         self.configuration = jpegConfig
+
+        try await encoderProvider.configure(
+            width: config.resolution.width,
+            height: config.resolution.height,
+            codec: .jpeg,
+            bitrate: nil,
+            frameRate: config.frameRate.value,
+            keyFrameInterval: nil,
+            realTime: config.realTime,
+            profileLevel: nil
+        )
         self.isConfigured = true
     }
 
@@ -77,8 +101,15 @@ public actor JPEGEncoder: VideoEncoderProtocol {
             )
         }
 
-        return EncodedVideoFrame(
+        let encoded = try await encoderProvider.encode(
             data: frame.data,
+            width: frame.format.resolution.width,
+            height: frame.format.resolution.height,
+            timestamp: frame.timestamp,
+            isKeyFrame: true
+        )
+        return EncodedVideoFrame(
+            data: encoded,
             codec: codec,
             timestamp: frame.timestamp,
             isKeyFrame: true,
@@ -89,20 +120,31 @@ public actor JPEGEncoder: VideoEncoderProtocol {
     /// Requests the next encoded frame to be a keyframe.
     public func forceKeyFrame() async throws {
         // No-op: every frame is a keyframe in MJPEG.
+        try await encoderProvider.forceKeyFrame()
     }
 
     /// Updates the target bitrate dynamically.
     public func updateBitrate(_ bitrate: Int) async throws {
         // No-op: JPEG is quality-based, not bitrate-based.
+        try await encoderProvider.updateBitrate(bitrate)
     }
 
     /// Flushes any buffered frames.
     public func flush() async throws -> [EncodedVideoFrame] {
-        []
+        guard let data = try await encoderProvider.flush() else {
+            return []
+        }
+        return [
+            EncodedVideoFrame(
+                data: data, codec: codec,
+                timestamp: 0, isKeyFrame: false, sequenceNumber: -1
+            )
+        ]
     }
 
     /// Resets the encoder to its unconfigured state.
     public func reset() async {
+        await encoderProvider.reset()
         isConfigured = false
         pendingKeyFrame = false
     }
@@ -113,6 +155,16 @@ public actor JPEGEncoder: VideoEncoderProtocol {
     public func configure(jpeg config: JPEGEncoderConfiguration) async throws {
         try config.validate()
         self.configuration = config
+
+        try await encoderProvider.configure(
+            width: 1920, height: 1080,
+            codec: .jpeg,
+            bitrate: nil,
+            frameRate: 30.0,
+            keyFrameInterval: nil,
+            realTime: config.realTime,
+            profileLevel: nil
+        )
         self.isConfigured = true
     }
 }

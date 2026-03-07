@@ -10,7 +10,7 @@ import Testing
 struct ProResEncoderTests {
 
     private func makeEncoder() -> ProResEncoder {
-        ProResEncoder()
+        ProResEncoder(encoderProvider: MockVideoEncoderProvider())
     }
 
     private func makeFrame(isKeyFrame: Bool = true) -> VideoFrame {

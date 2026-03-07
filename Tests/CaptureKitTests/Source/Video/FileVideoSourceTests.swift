@@ -74,7 +74,7 @@ struct FileVideoSourceTests {
         FileManager.default.createFile(atPath: tempURL.path, contents: Data())
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        let source = FileVideoSource(url: tempURL)
+        let source = FileVideoSource(url: tempURL, fileReader: MockVideoFileReader())
         _ = try await source.startCapture()
         await #expect(throws: CaptureError.self) {
             try await source.configure(.default)
@@ -100,7 +100,7 @@ struct FileVideoSourceTests {
         FileManager.default.createFile(atPath: tempURL.path, contents: Data())
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
-        let source = FileVideoSource(url: tempURL)
+        let source = FileVideoSource(url: tempURL, fileReader: MockVideoFileReader())
         _ = try await source.startCapture()
         await source.stopCapture()
         #expect(await source.isCapturing == false)
