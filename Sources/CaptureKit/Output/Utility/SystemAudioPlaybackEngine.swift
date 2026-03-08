@@ -48,7 +48,8 @@
                 let format = playbackFormat
             else { return }
 
-            let bytesPerFrame = Int(format.channelCount)
+            let bytesPerFrame =
+                Int(format.channelCount)
                 * MemoryLayout<Float>.size
             guard bytesPerFrame > 0 else { return }
             let frameCount = AVAudioFrameCount(

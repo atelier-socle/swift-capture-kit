@@ -54,18 +54,20 @@
             self.continuation = nil
 
             if let error {
-                continuation.resume(throwing: CaptureError.sourceNotAvailable(
-                    sourceType: "camera",
-                    reason: "Photo capture failed: \(error.localizedDescription)"
-                ))
+                continuation.resume(
+                    throwing: CaptureError.sourceNotAvailable(
+                        sourceType: "camera",
+                        reason: "Photo capture failed: \(error.localizedDescription)"
+                    ))
                 return
             }
 
             guard let data = photo.fileDataRepresentation() else {
-                continuation.resume(throwing: CaptureError.sourceNotAvailable(
-                    sourceType: "camera",
-                    reason: "No photo data available"
-                ))
+                continuation.resume(
+                    throwing: CaptureError.sourceNotAvailable(
+                        sourceType: "camera",
+                        reason: "No photo data available"
+                    ))
                 return
             }
 
@@ -277,11 +279,11 @@
                 } else {
                     AVCaptureDevice.isCenterStageEnabled = false
                 }
-                // Portrait effect and Studio Light are user-controlled via
-                // Control Center. Apple does not provide API to SET these —
-                // only to query their current state via:
-                // AVCaptureDevice.isPortraitEffectEnabled (class property)
-                // AVCaptureDevice.isStudioLightEnabled (class property)
+            // Portrait effect and Studio Light are user-controlled via
+            // Control Center. Apple does not provide API to SET these —
+            // only to query their current state via:
+            // AVCaptureDevice.isPortraitEffectEnabled (class property)
+            // AVCaptureDevice.isStudioLightEnabled (class property)
             #endif
         }
 
@@ -298,11 +300,12 @@
 
         func setFocusMode(_ mode: FocusMode) async throws {
             guard let device = currentDevice else { return }
-            let avMode: AVCaptureDevice.FocusMode = switch mode {
-            case .locked, .manualFocus: .locked
-            case .autoFocus: .autoFocus
-            case .continuousAutoFocus: .continuousAutoFocus
-            }
+            let avMode: AVCaptureDevice.FocusMode =
+                switch mode {
+                case .locked, .manualFocus: .locked
+                case .autoFocus: .autoFocus
+                case .continuousAutoFocus: .continuousAutoFocus
+                }
             guard device.isFocusModeSupported(avMode) else { return }
             try device.lockForConfiguration()
             device.focusMode = avMode

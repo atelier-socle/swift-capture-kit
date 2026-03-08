@@ -253,6 +253,21 @@
                 outputPacketCount = 1
             }
 
+            // VBR codecs (AAC, Opus, etc.) require output packet descriptions.
+            // Linear PCM (mBytesPerPacket > 0) does not.
+            let needsPacketDescriptions = outputASBD.mBytesPerPacket == 0
+            let packetDescs:
+                UnsafeMutablePointer<
+                    AudioStreamPacketDescription
+                >?
+            if needsPacketDescriptions {
+                packetDescs = .allocate(
+                    capacity: Int(outputPacketCount))
+            } else {
+                packetDescs = nil
+            }
+            defer { packetDescs?.deallocate() }
+
             let status = withUnsafeMutablePointer(
                 to: &context
             ) { ctxPtr in
@@ -262,7 +277,7 @@
                     ctxPtr,
                     &outputPacketCount,
                     &outputBufferList,
-                    nil
+                    packetDescs
                 )
             }
 

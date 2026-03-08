@@ -162,14 +162,15 @@ public actor FileOutput: CaptureOutput {
             startTime.map { Date().timeIntervalSince($0) } ?? 0
         let currentSize = await fileWriter.bytesWritten
 
-        let shouldRotate: Bool = switch rotation.trigger {
-        case .duration(let maxDuration):
-            duration >= maxDuration
-        case .size(let maxSize):
-            currentSize >= maxSize
-        case .durationOrSize(let maxDuration, let maxSize):
-            duration >= maxDuration || currentSize >= maxSize
-        }
+        let shouldRotate: Bool =
+            switch rotation.trigger {
+            case .duration(let maxDuration):
+                duration >= maxDuration
+            case .size(let maxSize):
+                currentSize >= maxSize
+            case .durationOrSize(let maxDuration, let maxSize):
+                duration >= maxDuration || currentSize >= maxSize
+            }
 
         if shouldRotate {
             try? await fileWriter.finalize()
@@ -198,15 +199,16 @@ public actor FileOutput: CaptureOutput {
         let stem = base.deletingPathExtension().lastPathComponent
         let dir = base.deletingLastPathComponent()
 
-        let suffix: String = switch naming {
-        case .timestamp:
-            ISO8601DateFormatter().string(from: Date())
-                .replacingOccurrences(of: ":", with: "-")
-        case .sequential:
-            String(format: "%03d", index)
-        case .unixTimestamp:
-            String(Int(Date().timeIntervalSince1970))
-        }
+        let suffix: String =
+            switch naming {
+            case .timestamp:
+                ISO8601DateFormatter().string(from: Date())
+                    .replacingOccurrences(of: ":", with: "-")
+            case .sequential:
+                String(format: "%03d", index)
+            case .unixTimestamp:
+                String(Int(Date().timeIntervalSince1970))
+            }
 
         return dir.appendingPathComponent("\(stem)-\(suffix).\(ext)")
     }
