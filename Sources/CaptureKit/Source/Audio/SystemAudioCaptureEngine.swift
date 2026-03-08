@@ -117,6 +117,27 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
         #endif
     }
 
+    func setInputGain(_ gain: Float) async throws {
+        let clamped = min(max(gain, 0.0), 1.0)
+        #if canImport(AVFAudio)
+            #if os(iOS) || os(visionOS)
+                let session = AVAudioSession.sharedInstance()
+                if session.isInputGainSettable {
+                    try session.setInputGain(clamped)
+                }
+            #elseif os(macOS)
+                audioEngine?.inputNode.volume = clamped
+            #endif
+        #endif
+    }
+
+    func setVoiceProcessingEnabled(_ enabled: Bool) async throws {
+        #if canImport(AVFAudio)
+            guard let engine = audioEngine else { return }
+            try engine.inputNode.setVoiceProcessingEnabled(enabled)
+        #endif
+    }
+
     #if canImport(AVFAudio)
         private static func convertBuffer(
             _ buffer: AVAudioPCMBuffer,

@@ -3,15 +3,21 @@
 
 #if canImport(ScreenCaptureKit)
     @preconcurrency import ScreenCaptureKit
+    import CoreMedia
     import Foundation
 
     /// Real system audio capture using ScreenCaptureKit SCStream.
+    ///
+    /// Uses an `SCStreamOutput` delegate on a serial queue to receive
+    /// `CMSampleBuffer` audio data and yield `CapturedAudioSample` values
+    /// into the returned `AsyncStream`.
     ///
     /// Actor isolation protects the non-Sendable SCStream.
     /// macOS only — ScreenCaptureKit is not available on iOS/visionOS.
     @available(macOS 14.0, *)
     actor SCStreamAudioProvider: ScreenCaptureAudioProviding {
         private var stream: SCStream?
+        private var delegate: SCStreamAudioDelegate?
 
         func startCapture(
             mode: SystemAudioCaptureMode,
@@ -25,6 +31,45 @@
             configuration.width = 1
             configuration.height = 1
 
+            let filter = try buildFilter(
+                mode: mode, content: content)
+
+            let scStream = SCStream(
+                filter: filter,
+                configuration: configuration,
+                delegate: nil)
+            self.stream = scStream
+
+            let audioDelegate = SCStreamAudioDelegate()
+            self.delegate = audioDelegate
+
+            try scStream.addStreamOutput(
+                audioDelegate,
+                type: .audio,
+                sampleHandlerQueue: DispatchQueue(
+                    label: "com.atelier-socle.capturekit.scstream.audio"))
+
+            try await scStream.startCapture()
+
+            let sampleStream = audioDelegate.samples
+            return AsyncStream { continuation in
+                let task = Task {
+                    for await sample in sampleStream {
+                        continuation.yield(sample)
+                    }
+                    continuation.finish()
+                }
+                continuation.onTermination = { [weak self] _ in
+                    task.cancel()
+                    Task { await self?.stopCapture() }
+                }
+            }
+        }
+
+        private func buildFilter(
+            mode: SystemAudioCaptureMode,
+            content: SCShareableContent
+        ) throws -> SCContentFilter {
             guard let display = content.displays.first else {
                 throw CaptureError.sourceNotAvailable(
                     sourceType: "systemAudio",
@@ -32,10 +77,9 @@
                 )
             }
 
-            let filter: SCContentFilter
             switch mode {
             case .allApps:
-                filter = SCContentFilter(
+                return SCContentFilter(
                     display: display,
                     excludingApplications: [],
                     exceptingWindows: [])
@@ -44,7 +88,7 @@
                 let apps = content.applications.filter {
                     bundleIDs.contains($0.bundleIdentifier)
                 }
-                filter = SCContentFilter(
+                return SCContentFilter(
                     display: display,
                     including: apps,
                     exceptingWindows: [])
@@ -53,28 +97,85 @@
                 let excludeApps = content.applications.filter {
                     bundleIDs.contains($0.bundleIdentifier)
                 }
-                filter = SCContentFilter(
+                return SCContentFilter(
                     display: display,
                     excludingApplications: excludeApps,
                     exceptingWindows: [])
-            }
-
-            let scStream = SCStream(
-                filter: filter,
-                configuration: configuration,
-                delegate: nil)
-            self.stream = scStream
-
-            return AsyncStream { continuation in
-                continuation.onTermination = { [weak self] _ in
-                    Task { await self?.stopCapture() }
-                }
             }
         }
 
         func stopCapture() async {
             try? await stream?.stopCapture()
             stream = nil
+            delegate = nil
+        }
+    }
+
+    /// @unchecked Sendable justification: This class is only used as a delegate
+    /// on a serial DispatchQueue. The continuation is thread-safe. The class
+    /// has no mutable state accessed from multiple threads.
+    @available(macOS 14.0, *)
+    private final class SCStreamAudioDelegate: NSObject, SCStreamOutput,
+        @unchecked Sendable
+    {
+        private let continuation: AsyncStream<CapturedAudioSample>.Continuation
+        let samples: AsyncStream<CapturedAudioSample>
+
+        override init() {
+            let (stream, cont) = AsyncStream.makeStream(
+                of: CapturedAudioSample.self)
+            self.samples = stream
+            self.continuation = cont
+            super.init()
+        }
+
+        func stream(
+            _ stream: SCStream,
+            didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+            of type: SCStreamOutputType
+        ) {
+            guard type == .audio else { return }
+            guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+
+            guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer)
+            else { return }
+
+            var length = 0
+            var dataPointer: UnsafeMutablePointer<Int8>?
+            CMBlockBufferGetDataPointer(
+                blockBuffer, atOffset: 0,
+                lengthAtOffsetOut: nil,
+                totalLengthOut: &length,
+                dataPointerOut: &dataPointer)
+
+            guard let dataPointer, length > 0 else { return }
+            let data = Data(bytes: dataPointer, count: length)
+
+            let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+
+            var sampleRate: Double = 48000
+            var channelCount = 1
+            if let formatDesc = CMSampleBufferGetFormatDescription(sampleBuffer) {
+                if let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc) {
+                    sampleRate = asbd.pointee.mSampleRate
+                    channelCount = Int(asbd.pointee.mChannelsPerFrame)
+                }
+            }
+
+            let format = AudioFormat(
+                sampleRate: SampleRate(rawValue: sampleRate) ?? .rate48000,
+                channelCount: channelCount,
+                channelLayout: channelCount == 1 ? .mono : .stereo,
+                bitDepth: .float32,
+                isInterleaved: true
+            )
+
+            let sample = CapturedAudioSample(
+                data: data,
+                timestamp: CMTimeGetSeconds(pts),
+                format: format
+            )
+            continuation.yield(sample)
         }
     }
 #endif

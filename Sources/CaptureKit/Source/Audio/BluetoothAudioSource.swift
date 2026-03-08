@@ -64,7 +64,19 @@ public actor BluetoothAudioSource: AudioSource {
     public var selectedDevice: AudioDeviceInfo
 
     /// The preferred Bluetooth audio codec, if any.
+    ///
+    /// This is a **preference hint**, not a guarantee. Apple does not provide a
+    /// public API to force a specific Bluetooth audio codec (AAC, SBC, aptX, etc.).
+    /// The system negotiates the codec automatically based on the connected device's
+    /// capabilities. Use ``activeCodec`` to query which codec the system selected.
     public var preferredCodec: BluetoothAudioCodec?
+
+    /// The Bluetooth audio codec currently in use by the system, if known.
+    ///
+    /// Returns `nil` when not capturing or when the codec cannot be determined.
+    /// Apple does not expose the negotiated Bluetooth codec in a public API;
+    /// this property reflects the preferred codec when it matches a known system route.
+    public private(set) var activeCodec: BluetoothAudioCodec?
 
     /// The current configuration used for Bluetooth audio capture.
     private var configuration: AudioSourceConfiguration
@@ -164,6 +176,8 @@ public actor BluetoothAudioSource: AudioSource {
             deviceID: selectedDevice.id
         )
 
+        self.activeCodec = preferredCodec
+
         let meter = audioMeter
         let levelContinuation = _audioLevelContinuation
         let meterLevels = await meter.levels
@@ -203,6 +217,7 @@ public actor BluetoothAudioSource: AudioSource {
     public func stopCapture() async {
         await captureEngine.stopCapture()
         isCapturing = false
+        activeCodec = nil
         await audioMeter.stop()
     }
 

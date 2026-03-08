@@ -71,7 +71,12 @@ public actor ProResEncoder: VideoEncoderProtocol {
     // MARK: - VideoEncoderProtocol
 
     /// Configures the encoder with generic video settings.
+    ///
+    /// - Throws: ``CaptureError/encoderNotAvailable(codec:reason:)`` if running
+    ///   on an Intel Mac (ProRes encoding requires Apple Silicon M1+).
     public func configure(_ config: VideoEncoderConfiguration) async throws {
+        try Self.requireAppleSilicon()
+
         let proresConfig = ProResEncoderConfiguration(
             realTime: config.realTime
         )
@@ -150,7 +155,12 @@ public actor ProResEncoder: VideoEncoderProtocol {
     // MARK: - Codec-Specific Configuration
 
     /// Configures with ProRes-specific settings.
+    ///
+    /// - Throws: ``CaptureError/encoderNotAvailable(codec:reason:)`` if running
+    ///   on an Intel Mac (ProRes encoding requires Apple Silicon M1+).
     public func configure(prores config: ProResEncoderConfiguration) async throws {
+        try Self.requireAppleSilicon()
+
         self.configuration = config
 
         try await encoderProvider.configure(
@@ -163,5 +173,18 @@ public actor ProResEncoder: VideoEncoderProtocol {
             profileLevel: config.profile.rawValue
         )
         self.isConfigured = true
+    }
+
+    // MARK: - Apple Silicon Check
+
+    private static func requireAppleSilicon() throws {
+        #if os(macOS)
+            #if !arch(arm64)
+                throw CaptureError.encoderNotAvailable(
+                    codec: "prores",
+                    reason: "ProRes encoding requires Apple Silicon (M1 or later)"
+                )
+            #endif
+        #endif
     }
 }

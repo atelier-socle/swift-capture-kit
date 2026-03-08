@@ -33,6 +33,18 @@ protocol AudioCaptureProviding: Sendable {
     func configureAudioSession(
         category: String, mode: String
     ) async throws
+
+    /// Set the input gain level (0.0 to 1.0).
+    ///
+    /// On macOS, sets AVAudioEngine inputNode volume.
+    /// On iOS/visionOS, sets AVAudioSession inputGain.
+    func setInputGain(_ gain: Float) async throws
+
+    /// Enable or disable voice processing on the input node.
+    ///
+    /// When enabled, the system applies echo cancellation and noise suppression
+    /// optimized for voice communication.
+    func setVoiceProcessingEnabled(_ enabled: Bool) async throws
 }
 
 /// A raw audio sample from the capture engine.

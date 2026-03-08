@@ -34,9 +34,17 @@ public actor VoIPAudioSource: AudioSource {
     public private(set) var activeFormat: AudioFormat?
 
     /// Whether voice processing is enabled for enhanced speech capture.
+    ///
+    /// When `true`, enables echo cancellation and noise suppression on the
+    /// AVAudioEngine input node via `setVoiceProcessingEnabled(_:)`.
+    /// Applied when ``startCapture()`` is called.
     public var voiceProcessingEnabled: Bool
 
     /// Whether voice isolation is enabled to suppress background noise.
+    ///
+    /// Voice isolation further reduces non-speech audio beyond standard voice
+    /// processing. Applied when ``startCapture()`` is called alongside
+    /// ``voiceProcessingEnabled``.
     public var voiceIsolationEnabled: Bool
 
     /// The current configuration used for VoIP audio capture.
@@ -141,6 +149,10 @@ public actor VoIPAudioSource: AudioSource {
             configuration: config,
             deviceID: nil
         )
+
+        if voiceProcessingEnabled {
+            try await captureEngine.setVoiceProcessingEnabled(true)
+        }
 
         let meter = audioMeter
         let levelContinuation = _audioLevelContinuation

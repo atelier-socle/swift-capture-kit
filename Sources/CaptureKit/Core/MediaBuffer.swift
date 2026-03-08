@@ -102,6 +102,13 @@ public struct VideoFrame: Sendable {
     /// A monotonically increasing sequence number.
     public let sequenceNumber: Int64
 
+    /// Optional render metadata attached by the source.
+    ///
+    /// Sources may attach rendering hints for downstream consumers. For example,
+    /// ``CinematicCameraSource`` includes `"fNumber"` so post-processing pipelines
+    /// can apply depth-of-field blur matching the simulated aperture.
+    public let metadata: [String: String]
+
     /// Creates a raw video frame.
     ///
     /// - Parameters:
@@ -110,18 +117,21 @@ public struct VideoFrame: Sendable {
     ///   - timestamp: The presentation timestamp in seconds.
     ///   - isKeyFrame: Whether this frame is a key frame.
     ///   - sequenceNumber: A monotonically increasing sequence number.
+    ///   - metadata: Optional render metadata for downstream consumers.
     public init(
         data: Data,
         format: VideoFormat,
         timestamp: TimeInterval,
         isKeyFrame: Bool,
-        sequenceNumber: Int64
+        sequenceNumber: Int64,
+        metadata: [String: String] = [:]
     ) {
         self.data = data
         self.format = format
         self.timestamp = timestamp
         self.isKeyFrame = isKeyFrame
         self.sequenceNumber = sequenceNumber
+        self.metadata = metadata
     }
 }
 

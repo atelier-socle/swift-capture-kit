@@ -149,6 +149,8 @@ public actor LineInSource: AudioSource {
             deviceID: selectedDevice.id
         )
 
+        try await captureEngine.setInputGain(inputGain)
+
         let meter = audioMeter
         let levelContinuation = _audioLevelContinuation
         let meterLevels = await meter.levels

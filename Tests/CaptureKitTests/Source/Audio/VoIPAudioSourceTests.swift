@@ -81,7 +81,10 @@ struct VoIPAudioSourceTests {
     func stopCaptureSetsIsCapturingToFalse() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
 
-        let source = VoIPAudioSource()
+        let source = VoIPAudioSource(
+            voiceProcessingEnabled: true,
+            captureEngine: MockAudioCaptureEngine()
+        )
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)

@@ -35,7 +35,16 @@ public actor CinematicCameraSource: VideoSource {
     /// The currently active video format, if configured or capturing.
     public private(set) var activeFormat: VideoFormat?
 
-    /// Simulated aperture (f-number). Range: 1.4–16.0.
+    /// Simulated aperture (f-number) for depth-of-field rendering. Range: 1.4–16.0.
+    ///
+    /// Apple does not expose a hardware aperture control on iPhone/iPad cameras
+    /// (the physical lens has a fixed aperture). This value is a **render metadata**
+    /// hint: it is included in every ``VideoFrame/metadata`` dictionary under the
+    /// key `"fNumber"` so downstream consumers (preview renderers, file writers,
+    /// post-production pipelines) can apply matching depth-of-field blur.
+    ///
+    /// - Lower values (e.g. 1.4) indicate stronger background blur.
+    /// - Higher values (e.g. 16.0) indicate minimal blur (everything in focus).
     public var fNumber: Float {
         didSet {
             fNumber = min(max(fNumber, 1.4), 16.0)
@@ -126,6 +135,7 @@ public actor CinematicCameraSource: VideoSource {
 
         let analyzer = statsAnalyzer
         let statsContinuation = _frameStatisticsContinuation
+        let currentFNumber = fNumber
 
         return AsyncStream { continuation in
             let task = Task {
@@ -136,7 +146,8 @@ public actor CinematicCameraSource: VideoSource {
                         format: sample.format,
                         timestamp: sample.timestamp,
                         isKeyFrame: sample.isKeyFrame,
-                        sequenceNumber: seq
+                        sequenceNumber: seq,
+                        metadata: ["fNumber": String(currentFNumber)]
                     )
                     continuation.yield(frame)
                     await analyzer.processFrame(frame)

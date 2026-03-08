@@ -32,6 +32,12 @@ actor MockAudioCaptureEngine: AudioCaptureProviding {
     /// The last audio session mode.
     var lastSessionMode: String?
 
+    /// The last input gain value set.
+    var lastInputGain: Float?
+
+    /// Whether voice processing was enabled.
+    var voiceProcessingEnabled: Bool = false
+
     func startCapture(
         configuration: AudioSourceConfiguration,
         deviceID: String?
@@ -69,5 +75,13 @@ actor MockAudioCaptureEngine: AudioCaptureProviding {
     ) async throws {
         lastSessionCategory = category
         lastSessionMode = mode
+    }
+
+    func setInputGain(_ gain: Float) async throws {
+        lastInputGain = gain
+    }
+
+    func setVoiceProcessingEnabled(_ enabled: Bool) async throws {
+        voiceProcessingEnabled = enabled
     }
 }

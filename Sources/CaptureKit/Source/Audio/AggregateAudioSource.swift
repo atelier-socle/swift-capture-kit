@@ -228,13 +228,22 @@ public actor AggregateAudioSource: AudioSource {
 
     #if os(macOS)
         /// Creates a CoreAudio aggregate device from the configured sub-devices.
+        ///
+        /// Uses ``clockSource`` (or the first device if nil) as the clock master.
+        /// Applies ``driftCompensation`` to all non-clock sub-devices.
         private func createAggregateDevice() throws -> AudioDeviceID {
             let uid =
                 "com.atelier-socle.capturekit.aggregate-\(UUID().uuidString)"
             let clockDeviceUID = (clockSource ?? devices[0]).id
 
             let subDevices: [[String: Any]] = devices.map { device in
-                [kAudioSubDeviceUIDKey as String: device.id]
+                var entry: [String: Any] = [
+                    kAudioSubDeviceUIDKey as String: device.id
+                ]
+                if device.id != clockDeviceUID && driftCompensation {
+                    entry[kAudioSubDeviceDriftCompensationKey as String] = 1
+                }
+                return entry
             }
 
             let description: [String: Any] = [
@@ -262,9 +271,6 @@ public actor AggregateAudioSource: AudioSource {
                         "Failed to create aggregate device (OSStatus: \(status))"
                 )
             }
-
-            // Drift compensation is enabled by default for aggregate
-            // devices created with AudioHardwareCreateAggregateDevice.
 
             return aggregateID
         }

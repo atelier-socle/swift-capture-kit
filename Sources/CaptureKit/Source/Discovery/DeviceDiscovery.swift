@@ -12,6 +12,18 @@ import Foundation
 /// Provides real-time device enumeration and change notifications for
 /// microphones, cameras, USB audio interfaces, and external displays.
 ///
+/// ## Platform Notes
+///
+/// - **macOS**: Full support — CoreAudio device enumeration, AVCaptureDevice
+///   discovery, NotificationCenter hot-plug monitoring for connect/disconnect.
+/// - **iOS/iPadOS**: AVCaptureDevice.DiscoverySession for video,
+///   AVAudioSession.availableInputs for audio, NotificationCenter hot-plug.
+/// - **visionOS**: Limited — `AVCaptureDevice.DeviceType.external` requires
+///   visionOS 2.1+. Hot-plug notifications (`AVCaptureDeviceWasConnected`,
+///   `AVCaptureDeviceWasDisconnected`) are not available. The device list is
+///   static after the initial query. Only `builtInWideAngleCamera` is available
+///   on visionOS versions prior to 2.1.
+///
 /// ```swift
 /// let discovery = DeviceDiscovery()
 /// await discovery.startMonitoring()

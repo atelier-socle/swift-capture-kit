@@ -3,6 +3,10 @@
 
 import Foundation
 
+#if canImport(VideoToolbox)
+    import VideoToolbox
+#endif
+
 /// AV1 encoder via VideoToolbox.
 ///
 /// Next-generation codec offering 30% better compression than HEVC.
@@ -22,6 +26,8 @@ public actor AV1Encoder: VideoEncoderProtocol {
     private var pendingKeyFrame: Bool = false
     /// The underlying encoder provider (VideoToolbox or passthrough).
     private let encoderProvider: any VideoEncoderProviding
+    /// Whether to skip the hardware support check (for testing with mock providers).
+    private let skipHardwareCheck: Bool
 
     // MARK: - Protocol Computed Properties
 
@@ -55,6 +61,7 @@ public actor AV1Encoder: VideoEncoderProtocol {
     /// Creates a new encoder with the given configuration.
     public init(configuration: AV1EncoderConfiguration = .streaming1080p) {
         self.configuration = configuration
+        self.skipHardwareCheck = false
         #if canImport(VideoToolbox)
             self.encoderProvider = VideoToolboxEncoder()
         #else
@@ -66,12 +73,23 @@ public actor AV1Encoder: VideoEncoderProtocol {
     init(configuration: AV1EncoderConfiguration = .streaming1080p, encoderProvider: any VideoEncoderProviding) {
         self.configuration = configuration
         self.encoderProvider = encoderProvider
+        self.skipHardwareCheck = true
     }
 
     // MARK: - VideoEncoderProtocol
 
     /// Configures the encoder with generic video settings.
+    ///
+    /// - Throws: ``CaptureError/encoderNotAvailable(codec:reason:)`` if AV1
+    ///   hardware encoding is not supported on the current device (requires M3+/A17 Pro+).
     public func configure(_ config: VideoEncoderConfiguration) async throws {
+        if !skipHardwareCheck {
+            try Self.checkAV1Support(
+                width: config.resolution.width,
+                height: config.resolution.height
+            )
+        }
+
         let av1Config = AV1EncoderConfiguration(
             bitrate: config.bitrate,
             keyFrameInterval: config.keyFrameInterval,
@@ -158,7 +176,14 @@ public actor AV1Encoder: VideoEncoderProtocol {
     // MARK: - Codec-Specific Configuration
 
     /// Configures with AV1-specific settings.
+    ///
+    /// - Throws: ``CaptureError/encoderNotAvailable(codec:reason:)`` if AV1
+    ///   hardware encoding is not supported on the current device.
     public func configure(av1 config: AV1EncoderConfiguration) async throws {
+        if !skipHardwareCheck {
+            try Self.checkAV1Support(width: 1920, height: 1080)
+        }
+
         self.configuration = config
 
         try await encoderProvider.configure(
@@ -171,5 +196,27 @@ public actor AV1Encoder: VideoEncoderProtocol {
             profileLevel: config.profile.rawValue
         )
         self.isConfigured = true
+    }
+
+    // MARK: - AV1 Support Check
+
+    private static func checkAV1Support(width: Int, height: Int) throws {
+        #if canImport(VideoToolbox)
+            var encoderID: CFString?
+            let status = VTCopySupportedPropertyDictionaryForEncoder(
+                width: Int32(width),
+                height: Int32(height),
+                codecType: kCMVideoCodecType_AV1,
+                encoderSpecification: nil,
+                encoderIDOut: &encoderID,
+                supportedPropertiesOut: nil
+            )
+            guard status == noErr else {
+                throw CaptureError.encoderNotAvailable(
+                    codec: "av1",
+                    reason: "AV1 hardware encoding requires Apple Silicon M3 or later (A17 Pro on iPhone)"
+                )
+            }
+        #endif
     }
 }
