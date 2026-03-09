@@ -40,6 +40,7 @@ public struct DeviceCapabilities: Sendable {
             capabilities.insert(.stageManager)
             capabilities.insert(.thunderbolt)
             capabilities.insert(.screenCaptureKit)
+            capabilities.insert(.multiCamera)
         #elseif os(iOS)
             capabilities.insert(.multiCamera)
         #endif

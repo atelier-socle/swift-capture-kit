@@ -18,6 +18,7 @@
     actor SCStreamAudioProvider: ScreenCaptureAudioProviding {
         private var stream: SCStream?
         private var delegate: SCStreamAudioDelegate?
+        private var videoDiscardDelegate: SCStreamVideoDiscardDelegate?
         private var errorDelegate: SCStreamErrorDelegate?
 
         func startCapture(
@@ -52,6 +53,18 @@
                 type: .audio,
                 sampleHandlerQueue: DispatchQueue(
                     label: "com.atelier-socle.capturekit.scstream.audio"))
+
+            // Register a discard handler for .screen to prevent
+            // "stream output NOT found. Dropping frame" spam.
+            let discardDelegate = SCStreamVideoDiscardDelegate()
+            self.videoDiscardDelegate = discardDelegate
+            try scStream.addStreamOutput(
+                discardDelegate,
+                type: .screen,
+                sampleHandlerQueue: DispatchQueue(
+                    label:
+                        "com.atelier-socle.capturekit.scstream.video-discard"
+                ))
 
             try await scStream.startCapture()
 
@@ -112,6 +125,7 @@
             try? await stream?.stopCapture()
             stream = nil
             delegate = nil
+            videoDiscardDelegate = nil
             errorDelegate = nil
         }
     }
@@ -127,6 +141,22 @@
             didStopWithError error: any Error
         ) {
             // Stream stopped due to an error — logged by the provider.
+        }
+    }
+
+    /// @unchecked Sendable justification: This class is only used as a delegate
+    /// on a serial DispatchQueue. It has no mutable state — it silently
+    /// discards all video frames to prevent "stream output NOT found" spam.
+    @available(macOS 14.0, *)
+    private final class SCStreamVideoDiscardDelegate: NSObject,
+        SCStreamOutput, @unchecked Sendable
+    {
+        func stream(
+            _ stream: SCStream,
+            didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+            of type: SCStreamOutputType
+        ) {
+            // Intentionally empty — discard video frames.
         }
     }
 
