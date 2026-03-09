@@ -145,13 +145,35 @@ public actor VoIPAudioSource: AudioSource {
             mode: "voiceChat"
         )
 
-        let stream = try await captureEngine.startCapture(
+        var stream = try await captureEngine.startCapture(
             configuration: config,
             deviceID: nil
         )
 
-        await enableVoiceProcessingIfConfigured()
+        // T19b fix: Attempt VP after engine is created. If it fails (-10849
+        // on macOS), the input node format may change and invalidate the tap.
+        // Restart capture to get a clean tap without voice processing.
+        if voiceProcessingEnabled {
+            let vpFailed = await attemptVoiceProcessing()
+            if vpFailed {
+                await captureEngine.stopCapture()
+                stream = try await captureEngine.startCapture(
+                    configuration: config,
+                    deviceID: nil
+                )
+            }
+        }
 
+        return await buildAudioStream(
+            from: stream, config: config
+        )
+    }
+
+    /// Maps raw samples to ``AudioBuffer`` with metering and level forwarding.
+    private func buildAudioStream(
+        from stream: AsyncStream<CapturedAudioSample>,
+        config: AudioSourceConfiguration
+    ) async -> AsyncStream<AudioBuffer> {
         let meter = audioMeter
         let levelContinuation = _audioLevelContinuation
         let meterLevels = await meter.levels
@@ -187,17 +209,16 @@ public actor VoIPAudioSource: AudioSource {
         }
     }
 
-    /// Attempts to enable voice processing; falls back gracefully if unavailable.
-    private func enableVoiceProcessingIfConfigured() async {
-        guard voiceProcessingEnabled else { return }
+    /// Attempts to enable voice processing. Returns `true` if it failed.
+    private func attemptVoiceProcessing() async -> Bool {
         do {
             try await captureEngine.setVoiceProcessingEnabled(true)
+            return false
         } catch {
-            // Voice processing may not be available on all platforms/configurations
-            // (e.g. macOS may return -10849). Fall back to standard capture.
             print(
                 "VoIPAudioSource: voice processing unavailable, falling back — \(error)"
             )
+            return true
         }
     }
 
