@@ -27,6 +27,7 @@ actor AVAssetWriterEngine: FileWriterProviding {
         audioFormat: AudioFormat?,
         videoFormat: VideoFormat?
     ) async throws {
+        _bytesWritten = 0
         let fileType = avFileType(for: container)
         let assetWriter = try AVAssetWriter(
             outputURL: url, fileType: fileType)

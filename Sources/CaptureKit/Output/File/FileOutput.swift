@@ -45,6 +45,8 @@ public actor FileOutput: CaptureOutput {
     private var filesCreated: Int = 0
     private var audioBuffersReceived: Int64 = 0
     private var videoFramesReceived: Int64 = 0
+    private var preparedAudioFormat: AudioFormat?
+    private var preparedVideoFormat: VideoFormat?
 
     /// Creates a new file output with the given configuration.
     ///
@@ -97,6 +99,8 @@ public actor FileOutput: CaptureOutput {
             )
         }
         state = .ready
+        preparedAudioFormat = audioFormat
+        preparedVideoFormat = videoFormat
 
         try await fileWriter.prepare(
             url: configuration.url,
@@ -184,8 +188,8 @@ public actor FileOutput: CaptureOutput {
             try? await fileWriter.prepare(
                 url: rotatedURL,
                 container: configuration.container,
-                audioFormat: nil,
-                videoFormat: nil
+                audioFormat: preparedAudioFormat,
+                videoFormat: preparedVideoFormat
             )
         }
     }
