@@ -215,9 +215,6 @@ public actor VoIPAudioSource: AudioSource {
             try await captureEngine.setVoiceProcessingEnabled(true)
             return false
         } catch {
-            print(
-                "VoIPAudioSource: voice processing unavailable, falling back — \(error)"
-            )
             return true
         }
     }

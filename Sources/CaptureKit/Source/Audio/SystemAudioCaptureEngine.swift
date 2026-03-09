@@ -151,9 +151,6 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
                 // T19c fix: VP failure (-10849 on macOS) can corrupt the
                 // input node. Create a completely fresh engine so the next
                 // startCapture() gets a clean node with a valid tap.
-                print(
-                    "SystemAudioCaptureEngine: VP failed, resetting engine — \(error)"
-                )
                 engine.inputNode.removeTap(onBus: 0)
                 engine.stop()
                 self.audioEngine = nil
