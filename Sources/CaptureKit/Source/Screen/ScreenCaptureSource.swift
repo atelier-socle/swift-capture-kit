@@ -3,6 +3,11 @@
 
 import Foundation
 
+#if canImport(ScreenCaptureKit) && os(macOS)
+    @preconcurrency import ScreenCaptureKit
+    import CoreGraphics
+#endif
+
 /// Unified screen capture source that routes to the correct platform implementation.
 ///
 /// On macOS, uses ScreenCaptureKit for full system capture (display, window, app, region).
@@ -254,8 +259,57 @@ public actor ScreenCaptureSource: VideoSource {
     /// Returns displays, windows, and applications available for capture.
     /// - Throws: ``CaptureError/sourceNotAvailable(sourceType:reason:)`` on non-macOS platforms.
     public static func availableContent() async throws -> ScreenCaptureContent {
-        #if os(macOS)
-            return ScreenCaptureContent(displays: [], windows: [], applications: [])
+        #if canImport(ScreenCaptureKit) && os(macOS)
+            let scContent = try await SCShareableContent.excludingDesktopWindows(
+                false, onScreenWindowsOnly: false
+            )
+
+            let displays = scContent.displays.map { display in
+                ScreenDisplay(
+                    id: display.displayID,
+                    width: display.width,
+                    height: display.height,
+                    frame: ScreenRect(
+                        x: Double(display.frame.origin.x),
+                        y: Double(display.frame.origin.y),
+                        width: Double(display.frame.size.width),
+                        height: Double(display.frame.size.height)
+                    ),
+                    isMain: display.displayID == CGMainDisplayID()
+                )
+            }
+
+            let windows = scContent.windows.compactMap { window -> ScreenWindow? in
+                ScreenWindow(
+                    id: window.windowID,
+                    title: window.title,
+                    owningApplicationBundleID: window.owningApplication?.bundleIdentifier,
+                    owningApplicationName: window.owningApplication?.applicationName,
+                    frame: ScreenRect(
+                        x: Double(window.frame.origin.x),
+                        y: Double(window.frame.origin.y),
+                        width: Double(window.frame.size.width),
+                        height: Double(window.frame.size.height)
+                    ),
+                    isOnScreen: window.isOnScreen,
+                    windowLayer: window.windowLayer
+                )
+            }
+
+            let applications = scContent.applications.compactMap { app -> ScreenApplication? in
+                let name = app.applicationName
+                guard !name.isEmpty else { return nil }
+                return ScreenApplication(
+                    id: app.bundleIdentifier,
+                    applicationName: name
+                )
+            }
+
+            return ScreenCaptureContent(
+                displays: displays,
+                windows: windows,
+                applications: applications
+            )
         #else
             throw CaptureError.sourceNotAvailable(
                 sourceType: "screenCapture",

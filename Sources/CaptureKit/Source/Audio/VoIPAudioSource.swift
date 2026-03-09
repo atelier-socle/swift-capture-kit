@@ -150,9 +150,7 @@ public actor VoIPAudioSource: AudioSource {
             deviceID: nil
         )
 
-        if voiceProcessingEnabled {
-            try await captureEngine.setVoiceProcessingEnabled(true)
-        }
+        await enableVoiceProcessingIfConfigured()
 
         let meter = audioMeter
         let levelContinuation = _audioLevelContinuation
@@ -186,6 +184,20 @@ public actor VoIPAudioSource: AudioSource {
                 task.cancel()
                 forwardTask.cancel()
             }
+        }
+    }
+
+    /// Attempts to enable voice processing; falls back gracefully if unavailable.
+    private func enableVoiceProcessingIfConfigured() async {
+        guard voiceProcessingEnabled else { return }
+        do {
+            try await captureEngine.setVoiceProcessingEnabled(true)
+        } catch {
+            // Voice processing may not be available on all platforms/configurations
+            // (e.g. macOS may return -10849). Fall back to standard capture.
+            print(
+                "VoIPAudioSource: voice processing unavailable, falling back — \(error)"
+            )
         }
     }
 
