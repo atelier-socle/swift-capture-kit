@@ -2,6 +2,7 @@
 // Copyright 2026 Atelier Socle SAS
 
 @preconcurrency import AVFoundation
+import CoreVideo
 import Foundation
 
 /// Real file writer using AVAssetWriter.
@@ -12,6 +13,9 @@ actor AVAssetWriterEngine: FileWriterProviding {
     private var writer: AVAssetWriter?
     private var audioInput: AVAssetWriterInput?
     private var videoInput: AVAssetWriterInput?
+    private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
+    private var videoWidth: Int = 0
+    private var videoHeight: Int = 0
     private var _bytesWritten: Int64 = 0
     private var sessionStarted = false
 
@@ -46,6 +50,21 @@ actor AVAssetWriterEngine: FileWriterProviding {
             if assetWriter.canAdd(input) {
                 assetWriter.add(input)
                 self.videoInput = input
+                self.videoWidth = videoFormat.resolution.width
+                self.videoHeight = videoFormat.resolution.height
+
+                let sourceAttrs: [String: Any] = [
+                    kCVPixelBufferPixelFormatTypeKey as String:
+                        Int(kCVPixelFormatType_32BGRA),
+                    kCVPixelBufferWidthKey as String:
+                        videoFormat.resolution.width,
+                    kCVPixelBufferHeightKey as String:
+                        videoFormat.resolution.height
+                ]
+                self.pixelBufferAdaptor =
+                    AVAssetWriterInputPixelBufferAdaptor(
+                        assetWriterInput: input,
+                        sourcePixelBufferAttributes: sourceAttrs)
             }
         }
 
@@ -86,17 +105,25 @@ actor AVAssetWriterEngine: FileWriterProviding {
         timestamp: TimeInterval,
         isKeyFrame: Bool
     ) async throws {
-        guard let videoInput, videoInput.isReadyForMoreMediaData
+        guard let videoInput, videoInput.isReadyForMoreMediaData,
+            let adaptor = pixelBufferAdaptor
         else { return }
+
+        let width = videoWidth
+        let height = videoHeight
+        guard width > 0, height > 0 else { return }
 
         let cmTime = CMTime(
             seconds: timestamp, preferredTimescale: 90_000)
-        if let sampleBuffer = createVideoSampleBuffer(
-            data: data, timestamp: cmTime)
-        {
-            videoInput.append(sampleBuffer)
-            _bytesWritten += Int64(data.count)
-        }
+
+        guard
+            let pixelBuffer = createPixelBuffer(
+                from: data, width: width, height: height,
+                adaptor: adaptor)
+        else { return }
+
+        adaptor.append(pixelBuffer, withPresentationTime: cmTime)
+        _bytesWritten += Int64(data.count)
     }
 
     func finalize() async throws {
@@ -108,6 +135,7 @@ actor AVAssetWriterEngine: FileWriterProviding {
         self.writer = nil
         self.audioInput = nil
         self.videoInput = nil
+        self.pixelBufferAdaptor = nil
         sessionStarted = false
     }
 
@@ -137,8 +165,11 @@ actor AVAssetWriterEngine: FileWriterProviding {
     private func videoOutputSettings(
         for format: VideoFormat
     ) -> [String: Any]? {
-        // Pass nil to let AVAssetWriter accept pre-encoded video data.
-        nil
+        [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: format.resolution.width,
+            AVVideoHeightKey: format.resolution.height
+        ]
     }
 
     private func createAudioSampleBuffer(
@@ -199,59 +230,43 @@ actor AVAssetWriterEngine: FileWriterProviding {
         return sampleBuffer
     }
 
-    private func createVideoSampleBuffer(
-        data: Data,
-        timestamp: CMTime
-    ) -> CMSampleBuffer? {
-        var blockBuffer: CMBlockBuffer?
-        let length = data.count
+    private func createPixelBuffer(
+        from data: Data,
+        width: Int,
+        height: Int,
+        adaptor: AVAssetWriterInputPixelBufferAdaptor
+    ) -> CVPixelBuffer? {
+        guard let pool = adaptor.pixelBufferPool else { return nil }
 
-        var status = CMBlockBufferCreateWithMemoryBlock(
-            allocator: kCFAllocatorDefault,
-            memoryBlock: nil,
-            blockLength: length,
-            blockAllocator: kCFAllocatorDefault,
-            customBlockSource: nil,
-            offsetToData: 0,
-            dataLength: length,
-            flags: 0,
-            blockBufferOut: &blockBuffer
-        )
-        guard status == noErr, let blockBuffer else { return nil }
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+        guard let buffer = pixelBuffer else { return nil }
 
-        status = data.withUnsafeBytes { rawBuffer in
-            guard let src = rawBuffer.baseAddress else {
-                return OSStatus(kCMBlockBufferNoErr + 1)
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+
+        guard let baseAddress = CVPixelBufferGetBaseAddress(buffer)
+        else { return nil }
+
+        let dstBytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let srcBytesPerRow = width * 4
+
+        data.withUnsafeBytes { ptr in
+            guard let src = ptr.baseAddress else { return }
+            if dstBytesPerRow == srcBytesPerRow {
+                let count = min(
+                    data.count, height * dstBytesPerRow)
+                baseAddress.copyMemory(
+                    from: src, byteCount: count)
+            } else {
+                for row in 0..<height {
+                    (baseAddress + row * dstBytesPerRow).copyMemory(
+                        from: src + row * srcBytesPerRow,
+                        byteCount: srcBytesPerRow)
+                }
             }
-            return CMBlockBufferReplaceDataBytes(
-                with: src,
-                blockBuffer: blockBuffer,
-                offsetIntoDestination: 0,
-                dataLength: length
-            )
         }
-        guard status == noErr else { return nil }
 
-        var sampleBuffer: CMSampleBuffer?
-        var timing = CMSampleTimingInfo(
-            duration: .invalid,
-            presentationTimeStamp: timestamp,
-            decodeTimeStamp: .invalid
-        )
-        CMSampleBufferCreate(
-            allocator: kCFAllocatorDefault,
-            dataBuffer: blockBuffer,
-            dataReady: true,
-            makeDataReadyCallback: nil,
-            refcon: nil,
-            formatDescription: nil,
-            sampleCount: 1,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleSizeEntryCount: 0,
-            sampleSizeArray: nil,
-            sampleBufferOut: &sampleBuffer
-        )
-        return sampleBuffer
+        return buffer
     }
 }

@@ -14,18 +14,23 @@
         private var playerNode: AVAudioPlayerNode?
         private var playbackFormat: AVAudioFormat?
         private var savedVolume: Float = 1.0
+        private var inputChannelCount: Int = 1
+        private var inputIsInterleaved: Bool = true
 
         func prepare(format: AudioFormat) async throws {
             let engine = AVAudioEngine()
             let player = AVAudioPlayerNode()
             engine.attach(player)
 
+            // AVAudioEngine always uses non-interleaved format for
+            // internal node connections. Using interleaved: true crashes
+            // with kAudioUnitErr_FormatNotSupported (-10868).
             guard
                 let avFormat = AVAudioFormat(
                     commonFormat: .pcmFormatFloat32,
                     sampleRate: format.sampleRate.rawValue,
                     channels: AVAudioChannelCount(format.channelCount),
-                    interleaved: format.isInterleaved
+                    interleaved: false
                 )
             else {
                 throw CaptureError.outputPrepareFailed(
@@ -41,6 +46,8 @@
             self.audioEngine = engine
             self.playerNode = player
             self.playbackFormat = avFormat
+            self.inputChannelCount = format.channelCount
+            self.inputIsInterleaved = format.isInterleaved
         }
 
         func play(_ data: Data) async throws {
@@ -48,9 +55,8 @@
                 let format = playbackFormat
             else { return }
 
-            let bytesPerFrame =
-                Int(format.channelCount)
-                * MemoryLayout<Float>.size
+            let channelCount = Int(format.channelCount)
+            let bytesPerFrame = channelCount * MemoryLayout<Float>.size
             guard bytesPerFrame > 0 else { return }
             let frameCount = AVAudioFrameCount(
                 data.count / bytesPerFrame)
@@ -64,12 +70,26 @@
             buffer.frameLength = frameCount
 
             data.withUnsafeBytes { ptr in
-                guard let src = ptr.baseAddress,
-                    let dst = buffer.floatChannelData?[0]
-                else { return }
-                dst.update(
-                    from: src.assumingMemoryBound(to: Float.self),
-                    count: Int(frameCount) * Int(format.channelCount))
+                guard let src = ptr.baseAddress else { return }
+                let samples = src.assumingMemoryBound(to: Float.self)
+
+                if channelCount > 1 && inputIsInterleaved {
+                    // De-interleave: [L0, R0, L1, R1, ...] →
+                    // channel0=[L0, L1, ...], channel1=[R0, R1, ...]
+                    for frame in 0..<Int(frameCount) {
+                        for ch in 0..<channelCount {
+                            buffer.floatChannelData?[ch][frame] =
+                                samples[frame * channelCount + ch]
+                        }
+                    }
+                } else {
+                    // Mono or already non-interleaved: copy directly
+                    guard let dst = buffer.floatChannelData?[0]
+                    else { return }
+                    dst.update(
+                        from: samples,
+                        count: Int(frameCount) * channelCount)
+                }
             }
             await player.scheduleBuffer(buffer)
         }

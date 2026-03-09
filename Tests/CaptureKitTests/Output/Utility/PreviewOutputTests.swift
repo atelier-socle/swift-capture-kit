@@ -104,4 +104,38 @@ struct PreviewOutputTests {
         let id = await a.outputID
         #expect(id.hasPrefix("preview-"))
     }
+
+    @Test("prepare with video format sets active state")
+    func prepareWithVideoFormatSetsActiveState() async throws {
+        let output = PreviewOutput()
+        let format = VideoFormat(
+            resolution: .p720,
+            frameRate: .fps30,
+            pixelFormat: .bgra,
+            colorSpace: .srgb,
+            dynamicRange: .sdr
+        )
+        try await output.prepare(audioFormat: nil, videoFormat: format)
+        #expect(await output.state == .active)
+    }
+
+    @Test("receiveVideo with BGRA data and video format increments frames")
+    func receiveVideoWithBGRAData() async throws {
+        let output = PreviewOutput()
+        let format = VideoFormat(
+            resolution: .custom(width: 4, height: 4),
+            frameRate: .fps30,
+            pixelFormat: .bgra,
+            colorSpace: .srgb,
+            dynamicRange: .sdr
+        )
+        try await output.prepare(audioFormat: nil, videoFormat: format)
+        // 4x4 BGRA = 64 bytes
+        let data = Data(repeating: 0xFF, count: 4 * 4 * 4)
+        let frame = EncodedVideoFrame(
+            data: data, codec: .h264,
+            timestamp: 0, isKeyFrame: true, sequenceNumber: 0)
+        try await output.receiveVideo(frame)
+        #expect(await output.framesReceived == 1)
+    }
 }

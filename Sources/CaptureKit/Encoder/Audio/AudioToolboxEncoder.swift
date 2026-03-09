@@ -281,7 +281,12 @@
                 )
             }
 
-            // Status 1 = our "input exhausted" sentinel (normal)
+            // Status 1 = our "input exhausted" sentinel (normal).
+            // Status -10877 = not enough input data yet for the first
+            // few calls with VBR codecs (AAC, Opus). Return empty data.
+            if status == -10877 {
+                return Data()
+            }
             guard status == noErr || status == 1 else {
                 throw CaptureError.encodingFailed(
                     codec: "audio",

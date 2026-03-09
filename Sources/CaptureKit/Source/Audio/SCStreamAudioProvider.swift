@@ -18,6 +18,7 @@
     actor SCStreamAudioProvider: ScreenCaptureAudioProviding {
         private var stream: SCStream?
         private var delegate: SCStreamAudioDelegate?
+        private var errorDelegate: SCStreamErrorDelegate?
 
         func startCapture(
             mode: SystemAudioCaptureMode,
@@ -28,16 +29,19 @@
             let configuration = SCStreamConfiguration()
             configuration.capturesAudio = true
             configuration.excludesCurrentProcessAudio = excludeOwnApp
-            configuration.width = 1
-            configuration.height = 1
+            configuration.width = 2
+            configuration.height = 2
 
             let filter = try buildFilter(
                 mode: mode, content: content)
 
+            let streamErrorDelegate = SCStreamErrorDelegate()
+            self.errorDelegate = streamErrorDelegate
+
             let scStream = SCStream(
                 filter: filter,
                 configuration: configuration,
-                delegate: nil)
+                delegate: streamErrorDelegate)
             self.stream = scStream
 
             let audioDelegate = SCStreamAudioDelegate()
@@ -108,6 +112,21 @@
             try? await stream?.stopCapture()
             stream = nil
             delegate = nil
+            errorDelegate = nil
+        }
+    }
+
+    /// @unchecked Sendable justification: This class is used as an SCStreamDelegate
+    /// for error callbacks. It has no mutable state.
+    @available(macOS 14.0, *)
+    private final class SCStreamErrorDelegate: NSObject, SCStreamDelegate,
+        @unchecked Sendable
+    {
+        func stream(
+            _ stream: SCStream,
+            didStopWithError error: any Error
+        ) {
+            // Stream stopped due to an error — logged by the provider.
         }
     }
 

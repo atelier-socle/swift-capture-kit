@@ -2,6 +2,7 @@
 // Copyright 2026 Atelier Socle SAS
 
 @preconcurrency import AVFoundation
+import CoreVideo
 import Foundation
 
 /// Video preview output for SwiftUI integration.
@@ -32,6 +33,10 @@ public actor PreviewOutput: CaptureOutput {
     /// Whether to drop frames when the display can't keep up.
     public var dropFramesWhenBehind: Bool
 
+    /// Video dimensions from prepare().
+    private var videoWidth: Int = 0
+    private var videoHeight: Int = 0
+
     /// The display layer for rendering video frames.
     ///
     /// Use in SwiftUI via UIViewRepresentable/NSViewRepresentable.
@@ -57,6 +62,10 @@ public actor PreviewOutput: CaptureOutput {
         let layer = AVSampleBufferDisplayLayer()
         layer.videoGravity = .resizeAspect
         self.displayLayer = layer
+        if let videoFormat {
+            self.videoWidth = videoFormat.resolution.width
+            self.videoHeight = videoFormat.resolution.height
+        }
         state = .active
     }
 
@@ -99,36 +108,50 @@ public actor PreviewOutput: CaptureOutput {
     private func createSampleBuffer(
         from frame: EncodedVideoFrame
     ) -> CMSampleBuffer? {
-        var blockBuffer: CMBlockBuffer?
-        let length = frame.data.count
+        let width = videoWidth
+        let height = videoHeight
+        guard width > 0, height > 0 else { return nil }
 
-        var status = CMBlockBufferCreateWithMemoryBlock(
-            allocator: kCFAllocatorDefault,
-            memoryBlock: nil,
-            blockLength: length,
-            blockAllocator: kCFAllocatorDefault,
-            customBlockSource: nil,
-            offsetToData: 0,
-            dataLength: length,
-            flags: 0,
-            blockBufferOut: &blockBuffer
-        )
-        guard status == noErr, let blockBuffer else { return nil }
+        // Create CVPixelBuffer from raw frame data
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            width, height,
+            kCVPixelFormatType_32BGRA,
+            nil, &pixelBuffer)
+        guard let buffer = pixelBuffer else { return nil }
 
-        status = frame.data.withUnsafeBytes { rawBuffer in
-            guard let src = rawBuffer.baseAddress else {
-                return OSStatus(kCMBlockBufferNoErr + 1)
+        CVPixelBufferLockBaseAddress(buffer, [])
+        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
+
+        if let baseAddress = CVPixelBufferGetBaseAddress(buffer) {
+            let dstBytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+            let srcBytesPerRow = width * 4
+            frame.data.withUnsafeBytes { ptr in
+                guard let src = ptr.baseAddress else { return }
+                if dstBytesPerRow == srcBytesPerRow {
+                    let count = min(
+                        frame.data.count, height * dstBytesPerRow)
+                    baseAddress.copyMemory(
+                        from: src, byteCount: count)
+                } else {
+                    for row in 0..<height {
+                        (baseAddress + row * dstBytesPerRow).copyMemory(
+                            from: src + row * srcBytesPerRow,
+                            byteCount: srcBytesPerRow)
+                    }
+                }
             }
-            return CMBlockBufferReplaceDataBytes(
-                with: src,
-                blockBuffer: blockBuffer,
-                offsetIntoDestination: 0,
-                dataLength: length
-            )
         }
-        guard status == noErr else { return nil }
 
-        var sampleBuffer: CMSampleBuffer?
+        // Create format description from the pixel buffer
+        var formatDescription: CMFormatDescription?
+        CMVideoFormatDescriptionCreateForImageBuffer(
+            allocator: kCFAllocatorDefault,
+            imageBuffer: buffer,
+            formatDescriptionOut: &formatDescription)
+        guard let formatDesc = formatDescription else { return nil }
+
         var timing = CMSampleTimingInfo(
             duration: .invalid,
             presentationTimeStamp: CMTime(
@@ -136,20 +159,17 @@ public actor PreviewOutput: CaptureOutput {
                 preferredTimescale: 90_000),
             decodeTimeStamp: .invalid
         )
-        CMSampleBufferCreate(
+
+        var sampleBuffer: CMSampleBuffer?
+        CMSampleBufferCreateForImageBuffer(
             allocator: kCFAllocatorDefault,
-            dataBuffer: blockBuffer,
+            imageBuffer: buffer,
             dataReady: true,
             makeDataReadyCallback: nil,
             refcon: nil,
-            formatDescription: nil,
-            sampleCount: 1,
-            sampleTimingEntryCount: 1,
-            sampleTimingArray: &timing,
-            sampleSizeEntryCount: 0,
-            sampleSizeArray: nil,
-            sampleBufferOut: &sampleBuffer
-        )
+            formatDescription: formatDesc,
+            sampleTiming: &timing,
+            sampleBufferOut: &sampleBuffer)
         return sampleBuffer
     }
 }

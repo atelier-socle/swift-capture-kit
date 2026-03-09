@@ -93,6 +93,7 @@
         private var videoOutput: AVCaptureVideoDataOutput?
         private var photoOutput: AVCapturePhotoOutput?
         private var currentDevice: AVCaptureDevice?
+        private var captureDelegate: VideoCaptureDelegate?
         private var photoCaptureDelegate: PhotoCaptureDelegate?
         private var _isCapturing = false
 
@@ -147,24 +148,28 @@
             _isCapturing = true
 
             let config = configuration
-            return AsyncStream { continuation in
-                let delegate = VideoCaptureDelegate { sampleBuffer in
-                    if let sample = Self.extractSample(
-                        from: sampleBuffer, configuration: config)
-                    {
-                        continuation.yield(sample)
-                    }
-                }
+            let (stream, continuation) = AsyncStream.makeStream(
+                of: CapturedVideoSample.self)
 
-                let queue = DispatchQueue(
-                    label: "com.atelier-socle.capturekit.video")
-                output.setSampleBufferDelegate(delegate, queue: queue)
-                session.startRunning()
-
-                continuation.onTermination = { [weak self] _ in
-                    Task { await self?.stopCapture() }
+            let delegate = VideoCaptureDelegate { sampleBuffer in
+                if let sample = Self.extractSample(
+                    from: sampleBuffer, configuration: config)
+                {
+                    continuation.yield(sample)
                 }
             }
+            self.captureDelegate = delegate
+
+            let queue = DispatchQueue(
+                label: "com.atelier-socle.capturekit.video")
+            output.setSampleBufferDelegate(delegate, queue: queue)
+            session.startRunning()
+
+            continuation.onTermination = { [weak self] _ in
+                Task { await self?.stopCapture() }
+            }
+
+            return stream
         }
 
         func stopCapture() async {
@@ -172,6 +177,7 @@
             captureSession = nil
             videoOutput = nil
             photoOutput = nil
+            captureDelegate = nil
             photoCaptureDelegate = nil
             currentDevice = nil
             _isCapturing = false
