@@ -134,7 +134,20 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
     func setVoiceProcessingEnabled(_ enabled: Bool) async throws {
         #if canImport(AVFAudio)
             guard let engine = audioEngine else { return }
-            try engine.inputNode.setVoiceProcessingEnabled(enabled)
+            do {
+                try engine.inputNode.setVoiceProcessingEnabled(enabled)
+            } catch {
+                // T19c fix: VP failure (-10849 on macOS) can corrupt the
+                // input node. Create a completely fresh engine so the next
+                // startCapture() gets a clean node with a valid tap.
+                print(
+                    "SystemAudioCaptureEngine: VP failed, resetting engine — \(error)"
+                )
+                engine.inputNode.removeTap(onBus: 0)
+                engine.stop()
+                self.audioEngine = nil
+                throw error
+            }
         #endif
     }
 
