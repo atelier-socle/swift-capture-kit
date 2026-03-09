@@ -125,10 +125,11 @@ public actor MultiCameraSource: VideoSource {
         let config = self.configuration
         self.activeFormat = makeFormat(from: config)
 
+        let primaryCamera = multiCameraConfiguration.cameras[0]
         let stream = try await captureEngine.startCapture(
             configuration: config,
-            position: .back,
-            deviceType: .wideAngle
+            position: primaryCamera.device.position,
+            deviceType: primaryCamera.device.deviceType
         )
 
         let analyzer = statsAnalyzer
