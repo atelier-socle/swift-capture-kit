@@ -202,21 +202,45 @@ public actor AV1Encoder: VideoEncoderProtocol {
 
     private static func checkAV1Support(width: Int, height: Int) throws {
         #if canImport(VideoToolbox)
-            var encoderID: CFString?
-            let status = VTCopySupportedPropertyDictionaryForEncoder(
+            // First try VTCopySupportedPropertyDictionaryForEncoder
+            var properties: CFDictionary?
+            let queryStatus = VTCopySupportedPropertyDictionaryForEncoder(
                 width: Int32(width),
                 height: Int32(height),
                 codecType: kCMVideoCodecType_AV1,
                 encoderSpecification: nil,
-                encoderIDOut: &encoderID,
-                supportedPropertiesOut: nil
+                encoderIDOut: nil,
+                supportedPropertiesOut: &properties
             )
-            guard status == noErr else {
-                throw CaptureError.encoderNotAvailable(
-                    codec: "av1",
-                    reason: "AV1 hardware encoding requires Apple Silicon M3 or later (A17 Pro on iPhone)"
-                )
+            if queryStatus == noErr {
+                return
             }
+
+            // Fallback: Try creating a session directly.
+            // On some Apple Silicon chips (M4+), the query API may fail
+            // but the encoder is available via direct session creation.
+            var session: VTCompressionSession?
+            let createStatus = VTCompressionSessionCreate(
+                allocator: kCFAllocatorDefault,
+                width: Int32(width),
+                height: Int32(height),
+                codecType: kCMVideoCodecType_AV1,
+                encoderSpecification: nil,
+                imageBufferAttributes: nil,
+                compressedDataAllocator: nil,
+                outputCallback: nil,
+                refcon: nil,
+                compressionSessionOut: &session
+            )
+            if createStatus == noErr, let session {
+                VTCompressionSessionInvalidate(session)
+                return
+            }
+
+            throw CaptureError.encoderNotAvailable(
+                codec: "av1",
+                reason: "AV1 hardware encoding is not available on this device"
+            )
         #endif
     }
 }
