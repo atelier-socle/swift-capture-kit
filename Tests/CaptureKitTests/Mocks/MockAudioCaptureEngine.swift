@@ -38,6 +38,9 @@ actor MockAudioCaptureEngine: AudioCaptureProviding {
     /// Whether voice processing was enabled.
     var voiceProcessingEnabled: Bool = false
 
+    /// When true, setVoiceProcessingEnabled throws (simulates VP failure).
+    var voiceProcessingShouldFail = false
+
     func startCapture(
         configuration: AudioSourceConfiguration,
         deviceID: String?
@@ -82,6 +85,16 @@ actor MockAudioCaptureEngine: AudioCaptureProviding {
     }
 
     func setVoiceProcessingEnabled(_ enabled: Bool) async throws {
+        if voiceProcessingShouldFail {
+            throw CaptureError.sourceNotAvailable(
+                sourceType: "voip",
+                reason: "Voice processing unavailable in test"
+            )
+        }
         voiceProcessingEnabled = enabled
+    }
+
+    func setVoiceProcessingShouldFail(_ value: Bool) {
+        self.voiceProcessingShouldFail = value
     }
 }

@@ -16,6 +16,9 @@ actor MockFileWriter: FileWriterProviding {
 
     var bytesWritten: Int64 { _bytesWritten }
 
+    /// URLs passed to prepare, in order.
+    var preparedURLs: [URL] = []
+
     func prepare(
         url: URL,
         container: FileContainer,
@@ -23,6 +26,8 @@ actor MockFileWriter: FileWriterProviding {
         videoFormat: VideoFormat?
     ) async throws {
         prepareCallCount += 1
+        preparedURLs.append(url)
+        _bytesWritten = 0
     }
 
     func writeAudio(

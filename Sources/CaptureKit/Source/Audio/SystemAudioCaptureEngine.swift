@@ -18,6 +18,7 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
         private var audioEngine: AVAudioEngine?
     #endif
     private var _isCapturing = false
+    private var captureGeneration = 0
 
     var isCapturing: Bool { _isCapturing }
 
@@ -40,6 +41,8 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
 
             self.audioEngine = engine
             self._isCapturing = true
+            captureGeneration += 1
+            let generation = captureGeneration
 
             return AsyncStream { continuation in
                 inputNode.installTap(
@@ -55,7 +58,15 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
                 }
 
                 continuation.onTermination = { [weak self] _ in
-                    Task { await self?.stopCapture() }
+                    Task {
+                        guard let self else { return }
+                        // Only stop if this stream is still the current
+                        // generation. Prevents a stale stream's termination
+                        // from killing a newer engine (T19 fix).
+                        if await self.captureGeneration == generation {
+                            await self.stopCapture()
+                        }
+                    }
                 }
 
                 do {
