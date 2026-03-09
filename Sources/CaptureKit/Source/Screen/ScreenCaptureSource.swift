@@ -221,7 +221,8 @@ public actor ScreenCaptureSource: VideoSource {
                         format: sample.format,
                         timestamp: sample.timestamp,
                         isKeyFrame: sample.isKeyFrame,
-                        sequenceNumber: seq
+                        sequenceNumber: seq,
+                        metadata: sample.metadata
                     )
                     continuation.yield(frame)
                     await analyzer.processFrame(frame)

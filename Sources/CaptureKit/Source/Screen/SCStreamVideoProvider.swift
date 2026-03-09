@@ -29,6 +29,7 @@
 
             let configuration = SCStreamConfiguration()
             configuration.capturesAudio = false
+            configuration.pixelFormat = kCVPixelFormatType_32BGRA
 
             let filter = try buildFilter(target: target, content: content)
 
@@ -167,6 +168,15 @@
             of type: SCStreamOutputType
         ) {
             guard type == .screen else { return }
+
+            // Filter out idle/blank frames — only process complete frames.
+            guard
+                let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                    sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+                let statusValue = attachments.first?[.status] as? Int,
+                SCFrameStatus(rawValue: statusValue) == .complete
+            else { return }
+
             guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
             else { return }
 
@@ -195,7 +205,8 @@
                 data: data,
                 timestamp: CMTimeGetSeconds(pts),
                 format: format,
-                isKeyFrame: true
+                isKeyFrame: true,
+                metadata: ["bytesPerRow": String(bytesPerRow)]
             )
             continuation.yield(sample)
         }

@@ -14,6 +14,22 @@ struct CapturedVideoSample: Sendable {
     let format: VideoFormat
     /// Whether this frame is a key frame (raw capture frames are always independent).
     let isKeyFrame: Bool
+    /// Optional metadata (e.g. bytesPerRow for IOSurface-backed frames).
+    let metadata: [String: String]
+
+    init(
+        data: Data,
+        timestamp: TimeInterval,
+        format: VideoFormat,
+        isKeyFrame: Bool,
+        metadata: [String: String] = [:]
+    ) {
+        self.data = data
+        self.timestamp = timestamp
+        self.format = format
+        self.isKeyFrame = isKeyFrame
+        self.metadata = metadata
+    }
 }
 
 /// Internal protocol abstracting video capture engine (AVCaptureSession).
