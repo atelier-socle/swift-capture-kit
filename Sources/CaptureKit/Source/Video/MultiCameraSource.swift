@@ -5,8 +5,9 @@ import Foundation
 
 /// Orchestrates simultaneous capture from multiple cameras.
 ///
-/// Uses AVCaptureMultiCamSession on iOS (iPhone 11+) for front+back,
-/// and manages multiple AVCaptureDevice instances on macOS for external cameras.
+/// Each camera gets its own capture engine (AVCaptureSession) so sessions
+/// don't interfere. On macOS this uses separate AVCaptureSessions per camera;
+/// on iOS with multi-cam hardware it uses AVCaptureMultiCamSession.
 @available(macOS 14.0, iOS 17.0, *)
 public actor MultiCameraSource: VideoSource {
     /// The unique identifier for this multi-camera source.
@@ -51,8 +52,11 @@ public actor MultiCameraSource: VideoSource {
     /// The current configuration.
     private var configuration: VideoSourceConfiguration
 
-    /// The capture engine used for video capture.
-    private let captureEngine: any VideoCaptureProviding
+    /// Factory that creates a new capture engine per camera.
+    private let engineFactory: @Sendable () -> any VideoCaptureProviding
+
+    /// One capture engine per camera label — each owns its own AVCaptureSession.
+    private var captureEngines: [String: any VideoCaptureProviding] = [:]
 
     /// Frame statistics tracking.
     private let statsAnalyzer = VideoFrameAnalyzer()
@@ -75,17 +79,18 @@ public actor MultiCameraSource: VideoSource {
         self._frameStatisticsStream = stream
         self._frameStatisticsContinuation = continuation
         #if os(visionOS)
-            self.captureEngine = VisionOSVideoCaptureEngine()
+            self.engineFactory = { VisionOSVideoCaptureEngine() }
         #else
-            self.captureEngine = SystemVideoCaptureEngine()
+            self.engineFactory = { SystemVideoCaptureEngine() }
         #endif
     }
 
-    /// Creates a new multi-camera source with an injected capture engine (for testing).
+    /// Creates a new multi-camera source with an injected capture engine factory (for testing).
     ///
     /// - Parameters:
     ///   - configuration: The multi-camera configuration.
-    ///   - captureEngine: The capture engine to use.
+    ///   - captureEngine: A capture engine instance used as the factory template.
+    ///     Each camera stream will reuse this same instance in tests (mock supports it).
     init(configuration: MultiCameraConfiguration, captureEngine: any VideoCaptureProviding) {
         self.sourceID = "multicam-\(UUID().uuidString.prefix(8))"
         self.multiCameraConfiguration = configuration
@@ -93,7 +98,8 @@ public actor MultiCameraSource: VideoSource {
         let (stream, continuation) = AsyncStream.makeStream(of: FrameStatisticsSample.self)
         self._frameStatisticsStream = stream
         self._frameStatisticsContinuation = continuation
-        self.captureEngine = captureEngine
+        let sharedEngine = captureEngine
+        self.engineFactory = { sharedEngine }
     }
 
     /// Configures this source with the given video source configuration.
@@ -126,7 +132,10 @@ public actor MultiCameraSource: VideoSource {
         self.activeFormat = makeFormat(from: config)
 
         let primaryCamera = multiCameraConfiguration.cameras[0]
-        let stream = try await captureEngine.startCapture(
+        let engine = engineFactory()
+        captureEngines[primaryCamera.label] = engine
+
+        let stream = try await engine.startCapture(
             configuration: config,
             position: primaryCamera.device.position,
             deviceType: primaryCamera.device.deviceType
@@ -159,9 +168,12 @@ public actor MultiCameraSource: VideoSource {
         }
     }
 
-    /// Stops the current video capture.
+    /// Stops the current video capture for all cameras.
     public func stopCapture() async {
-        await captureEngine.stopCapture()
+        for engine in captureEngines.values {
+            await engine.stopCapture()
+        }
+        captureEngines.removeAll()
         isCapturing = false
         await statsAnalyzer.stop()
     }
@@ -182,7 +194,18 @@ public actor MultiCameraSource: VideoSource {
         }
 
         let config = self.configuration
-        let stream = try await captureEngine.startCapture(
+
+        // Reuse existing engine for this camera, or create a new one
+        let engine: any VideoCaptureProviding
+        if let existing = captureEngines[label] {
+            engine = existing
+        } else {
+            let newEngine = engineFactory()
+            captureEngines[label] = newEngine
+            engine = newEngine
+        }
+
+        let stream = try await engine.startCapture(
             configuration: config,
             position: camera.device.position,
             deviceType: camera.device.deviceType
