@@ -13,6 +13,9 @@ public enum SampleRate: Double, Sendable, CaseIterable, Comparable {
     /// 16 000 Hz — Wideband voice.
     case rate16000 = 16000
 
+    /// 24 000 Hz — Bluetooth HFP wideband.
+    case rate24000 = 24000
+
     /// 22 050 Hz — AM radio.
     case rate22050 = 22050
 
