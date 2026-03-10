@@ -134,4 +134,16 @@ struct MultiCameraSourceTests {
         let availability = source.availability
         #expect(availability.requiredPermissions.contains(.camera))
     }
+
+    #if os(iOS)
+        @Test("MultiCamSessionEngine.isSupported returns a boolean")
+        func multiCamSessionIsSupported() async throws {
+            guard #available(iOS 17.0, *) else { return }
+            // On CI (no hardware), this will be false. On iPhone 11+, true.
+            // We just verify the API is callable without crashing.
+            let supported = MultiCamSessionEngine.isSupported
+            // Either true or false is valid — we're testing the API exists.
+            #expect(supported == true || supported == false)
+        }
+    #endif
 }

@@ -5,9 +5,9 @@ import Foundation
 
 /// Orchestrates simultaneous capture from multiple cameras.
 ///
-/// Each camera gets its own capture engine (AVCaptureSession) so sessions
-/// don't interfere. On macOS this uses separate AVCaptureSessions per camera;
-/// on iOS with multi-cam hardware it uses AVCaptureMultiCamSession.
+/// On macOS each camera gets its own capture engine (separate AVCaptureSessions).
+/// On iOS, uses `AVCaptureMultiCamSession` for true simultaneous capture —
+/// separate sessions are interrupted by iOS when a second session starts.
 @available(macOS 14.0, iOS 17.0, *)
 public actor MultiCameraSource: VideoSource {
     /// The unique identifier for this multi-camera source.
@@ -56,7 +56,17 @@ public actor MultiCameraSource: VideoSource {
     private let engineFactory: @Sendable () -> any VideoCaptureProviding
 
     /// One capture engine per camera label — each owns its own AVCaptureSession.
+    /// Used on macOS or when AVCaptureMultiCamSession is not available.
     private var captureEngines: [String: any VideoCaptureProviding] = [:]
+
+    /// Pre-created streams from the multi-cam session (iOS only).
+    /// Populated by `startCapture()` when using `AVCaptureMultiCamSession`.
+    private var multiCamStreams: [String: AsyncStream<CapturedVideoSample>] = [:]
+
+    #if os(iOS)
+        /// The multi-cam session engine (iOS only, when supported).
+        private var multiCamEngine: MultiCamSessionEngine?
+    #endif
 
     /// Frame statistics tracking.
     private let statsAnalyzer = VideoFrameAnalyzer()
@@ -131,6 +141,14 @@ public actor MultiCameraSource: VideoSource {
         let config = self.configuration
         self.activeFormat = makeFormat(from: config)
 
+        // T21: On iOS, use AVCaptureMultiCamSession for true simultaneous capture.
+        #if os(iOS)
+            if MultiCamSessionEngine.isSupported {
+                return try await startMultiCamCapture(config: config)
+            }
+        #endif
+
+        // macOS / fallback: separate engines per camera
         let primaryCamera = multiCameraConfiguration.cameras[0]
         let engine = engineFactory()
         captureEngines[primaryCamera.label] = engine
@@ -141,35 +159,18 @@ public actor MultiCameraSource: VideoSource {
             deviceType: primaryCamera.device.deviceType
         )
 
-        let analyzer = statsAnalyzer
-        let statsContinuation = _frameStatisticsContinuation
-
-        return AsyncStream { continuation in
-            let task = Task {
-                var seq: Int64 = 0
-                for await sample in stream {
-                    let frame = VideoFrame(
-                        data: sample.data,
-                        format: sample.format,
-                        timestamp: sample.timestamp,
-                        isKeyFrame: sample.isKeyFrame,
-                        sequenceNumber: seq
-                    )
-                    continuation.yield(frame)
-                    await analyzer.processFrame(frame)
-                    if let latest = await analyzer.latestMetrics {
-                        statsContinuation.yield(latest)
-                    }
-                    seq += 1
-                }
-                continuation.finish()
-            }
-            continuation.onTermination = { _ in task.cancel() }
-        }
+        return wrapStream(stream, withStats: true)
     }
 
     /// Stops the current video capture for all cameras.
     public func stopCapture() async {
+        #if os(iOS)
+            if let engine = multiCamEngine {
+                await engine.stopCapture()
+                multiCamEngine = nil
+                multiCamStreams.removeAll()
+            }
+        #endif
         for engine in captureEngines.values {
             await engine.stopCapture()
         }
@@ -189,13 +190,21 @@ public actor MultiCameraSource: VideoSource {
     /// - Returns: An asynchronous stream of video frames from the specified camera.
     /// - Throws: ``CaptureError/deviceNotFound(deviceID:)`` if the label is not found.
     public func stream(for label: String) async throws -> AsyncStream<VideoFrame> {
+        guard multiCameraConfiguration.cameras.contains(where: { $0.label == label }) else {
+            throw CaptureError.deviceNotFound(deviceID: label)
+        }
+
+        // T21: If using multi-cam session, streams were pre-created in startCapture().
+        if let rawStream = multiCamStreams.removeValue(forKey: label) {
+            return wrapStream(rawStream, withStats: false)
+        }
+
+        // macOS / fallback: separate engine per camera
         guard let camera = multiCameraConfiguration.cameras.first(where: { $0.label == label }) else {
             throw CaptureError.deviceNotFound(deviceID: label)
         }
 
         let config = self.configuration
-
-        // Reuse existing engine for this camera, or create a new one
         let engine: any VideoCaptureProviding
         if let existing = captureEngines[label] {
             engine = existing
@@ -211,6 +220,57 @@ public actor MultiCameraSource: VideoSource {
             deviceType: camera.device.deviceType
         )
 
+        return wrapStream(stream, withStats: false)
+    }
+
+    // MARK: - Multi-Cam (iOS)
+
+    #if os(iOS)
+        /// Starts capture using `AVCaptureMultiCamSession` (iOS only).
+        ///
+        /// Sets up all cameras in a single session and stores their streams.
+        /// Returns the primary camera's stream.
+        private func startMultiCamCapture(
+            config: VideoSourceConfiguration
+        ) async throws -> AsyncStream<VideoFrame> {
+            let engine = MultiCamSessionEngine()
+            let cameras = multiCameraConfiguration.cameras
+
+            let rawStreams = try await engine.startCapture(
+                cameras: cameras, configuration: config)
+            self.multiCamEngine = engine
+
+            // Store secondary streams for later retrieval by stream(for:)
+            let primaryLabel = cameras[0].label
+            for (label, stream) in rawStreams where label != primaryLabel {
+                multiCamStreams[label] = stream
+            }
+
+            // Return primary camera's stream
+            guard let primaryStream = rawStreams[primaryLabel] else {
+                throw CaptureError.sourceNotAvailable(
+                    sourceType: "multi-camera",
+                    reason: "Primary camera stream not available"
+                )
+            }
+            return wrapStream(primaryStream, withStats: true)
+        }
+    #endif
+
+    // MARK: - Stream Wrapping
+
+    /// Wraps a raw sample stream into a `VideoFrame` stream.
+    ///
+    /// - Parameters:
+    ///   - stream: The raw captured video sample stream.
+    ///   - withStats: Whether to feed frames into the stats analyzer.
+    private func wrapStream(
+        _ stream: AsyncStream<CapturedVideoSample>,
+        withStats: Bool
+    ) -> AsyncStream<VideoFrame> {
+        let analyzer = withStats ? statsAnalyzer : nil
+        let statsContinuation = withStats ? _frameStatisticsContinuation : nil
+
         return AsyncStream { continuation in
             let task = Task {
                 var seq: Int64 = 0
@@ -223,6 +283,12 @@ public actor MultiCameraSource: VideoSource {
                         sequenceNumber: seq
                     )
                     continuation.yield(frame)
+                    if let analyzer {
+                        await analyzer.processFrame(frame)
+                        if let latest = await analyzer.latestMetrics {
+                            statsContinuation?.yield(latest)
+                        }
+                    }
                     seq += 1
                 }
                 continuation.finish()

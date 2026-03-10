@@ -8,9 +8,9 @@ import Testing
 @Suite("SampleRate")
 struct SampleRateTests {
 
-    @Test("CaseIterable count is 13")
+    @Test("CaseIterable count is 14")
     func caseIterableCount() {
-        #expect(SampleRate.allCases.count == 13)
+        #expect(SampleRate.allCases.count == 14)
     }
 
     @Test("rawValue correctness for every case")
@@ -19,6 +19,7 @@ struct SampleRateTests {
         #expect(SampleRate.rate11025.rawValue == 11025)
         #expect(SampleRate.rate16000.rawValue == 16000)
         #expect(SampleRate.rate22050.rawValue == 22050)
+        #expect(SampleRate.rate24000.rawValue == 24000)
         #expect(SampleRate.rate32000.rawValue == 32000)
         #expect(SampleRate.rate44100.rawValue == 44100)
         #expect(SampleRate.rate48000.rawValue == 48000)
