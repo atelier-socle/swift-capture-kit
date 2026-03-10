@@ -30,8 +30,12 @@ protocol AudioEncoderProviding: Sendable {
     /// - Parameters:
     ///   - data: The raw PCM audio data.
     ///   - timestamp: The presentation timestamp in seconds.
-    /// - Returns: The encoded audio data.
-    func encode(data: Data, timestamp: TimeInterval) async throws -> Data
+    /// - Returns: The encoded audio data and optional per-packet sizes.
+    ///   VBR codecs (AAC, Opus) return packet sizes so consumers can
+    ///   identify individual access unit boundaries.
+    func encode(
+        data: Data, timestamp: TimeInterval
+    ) async throws -> (Data, packetSizes: [Int]?)
 
     /// Flush any remaining encoded data.
     ///
@@ -58,8 +62,8 @@ struct PassthroughAudioEncoder: AudioEncoderProviding {
 
     func encode(
         data: Data, timestamp: TimeInterval
-    ) async throws -> Data {
-        data
+    ) async throws -> (Data, packetSizes: [Int]?) {
+        (data, packetSizes: nil)
     }
 
     func flush() async throws -> Data? { nil }

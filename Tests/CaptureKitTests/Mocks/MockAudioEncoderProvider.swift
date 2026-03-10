@@ -49,7 +49,7 @@ actor MockAudioEncoderProvider: AudioEncoderProviding {
 
     func encode(
         data: Data, timestamp: TimeInterval
-    ) async throws -> Data {
+    ) async throws -> (Data, packetSizes: [Int]?) {
         encodeCallCount += 1
         if shouldThrowOnEncode {
             throw CaptureError.encodingFailed(
@@ -57,7 +57,7 @@ actor MockAudioEncoderProvider: AudioEncoderProviding {
                 reason: "Mock encode error"
             )
         }
-        return data
+        return (data, packetSizes: nil)
     }
 
     func flush() async throws -> Data? { nil }

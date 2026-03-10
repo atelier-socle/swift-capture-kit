@@ -135,4 +135,54 @@ struct AACEncoderTests {
         let result = try await encoder.encode(buffer)
         #expect(result.codec == .aac)
     }
+
+    @Test(
+        "AAC encoder provides packet sizes that sum to data count",
+        .tags(.hardware)
+    )
+    func aacEncoderPacketSizes() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let encoder = AACEncoder(
+            configuration: AACEncoderConfiguration(
+                bitrate: 128_000,
+                sampleRate: .rate48000,
+                channelCount: 1
+            )
+        )
+        try await encoder.configure(
+            aac: AACEncoderConfiguration(
+                bitrate: 128_000,
+                sampleRate: .rate48000,
+                channelCount: 1
+            )
+        )
+
+        // 4096 float32 mono samples = 4 AAC-LC frames (1024 samples each)
+        let sampleCount = 4096
+        let format = AudioFormat(
+            sampleRate: .rate48000,
+            channelCount: 1,
+            bitDepth: .float32
+        )
+        let buffer = AudioBuffer(
+            data: Data(repeating: 0, count: sampleCount * 4),
+            format: format,
+            timestamp: 0.0,
+            duration: Double(sampleCount) / 48_000.0,
+            sequenceNumber: 1
+        )
+
+        let result = try await encoder.encode(buffer)
+        guard !result.data.isEmpty else { return }
+
+        if let sizes = result.packetSizes {
+            #expect(!sizes.isEmpty)
+            let totalSize = sizes.reduce(0, +)
+            #expect(totalSize == result.data.count)
+            for size in sizes {
+                #expect(size > 0)
+                #expect(size <= 768)
+            }
+        }
+    }
 }

@@ -133,7 +133,7 @@
 
         func encode(
             data: Data, timestamp: TimeInterval
-        ) async throws -> Data {
+        ) async throws -> (Data, packetSizes: [Int]?) {
             guard let converter = audioConverter,
                 let inASBD = inputASBD,
                 let outASBD = outputASBD
@@ -188,7 +188,7 @@
             inputASBD: AudioStreamBasicDescription,
             outputASBD: AudioStreamBasicDescription,
             data: Data
-        ) throws -> Data {
+        ) throws -> (Data, packetSizes: [Int]?) {
             let bytesPerFrame = Int(inputASBD.mBytesPerFrame)
             guard bytesPerFrame > 0 else {
                 throw CaptureError.encodingFailed(
@@ -201,7 +201,7 @@
             return try data.withUnsafeBytes { rawInput in
                 guard let baseAddress = rawInput.baseAddress
                 else {
-                    return Data()
+                    return (Data(), packetSizes: nil)
                 }
 
                 var context = EncoderInputContext(
@@ -228,7 +228,7 @@
             frameCount: Int,
             inputBufferSize: Int,
             context: inout EncoderInputContext
-        ) throws -> Data {
+        ) throws -> (Data, packetSizes: [Int]?) {
             // Output buffer: at least as large as input
             let outputSize = max(inputBufferSize, 32_768)
             let outputPtr = UnsafeMutablePointer<UInt8>.allocate(
@@ -285,7 +285,7 @@
             // Status -10877 = not enough input data yet for the first
             // few calls with VBR codecs (AAC, Opus). Return empty data.
             if status == -10877 {
-                return Data()
+                return (Data(), packetSizes: nil)
             }
             guard status == noErr || status == 1 else {
                 throw CaptureError.encodingFailed(
@@ -297,7 +297,17 @@
 
             let produced = Int(
                 outputBufferList.mBuffers.mDataByteSize)
-            return Data(bytes: outputPtr, count: produced)
+            let outputData = Data(bytes: outputPtr, count: produced)
+
+            // Extract per-packet sizes from packet descriptions.
+            var sizes: [Int]?
+            if let descs = packetDescs, outputPacketCount > 0 {
+                sizes = (0..<Int(outputPacketCount)).map { i in
+                    Int(descs[i].mDataByteSize)
+                }
+            }
+
+            return (outputData, packetSizes: sizes)
         }
     }
 #endif

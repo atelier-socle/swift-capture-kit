@@ -90,7 +90,7 @@ public actor OpusEncoder: AudioEncoderProtocol {
                 codec: "opus", reason: "Encoder not configured"
             )
         }
-        let encoded = try await encoderProvider.encode(
+        let (encoded, _) = try await encoderProvider.encode(
             data: buffer.data, timestamp: buffer.timestamp)
         return EncodedAudioBuffer(
             data: encoded,

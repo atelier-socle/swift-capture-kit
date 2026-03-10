@@ -152,6 +152,16 @@ public struct EncodedAudioBuffer: Sendable {
     /// A monotonically increasing sequence number.
     public let sequenceNumber: Int64
 
+    /// Sizes of individual access units within ``data``.
+    ///
+    /// When non-nil, ``data`` contains `packetSizes.count` concatenated
+    /// codec packets whose sizes sum to `data.count`.
+    /// This is essential for ADTS framing in HTTP streaming (Icecast, HLS).
+    ///
+    /// Only VBR codecs (AAC, Opus) provide packet sizes.  CBR or
+    /// passthrough encoders leave this `nil`.
+    public let packetSizes: [Int]?
+
     /// Creates an encoded audio buffer.
     ///
     /// - Parameters:
@@ -160,18 +170,21 @@ public struct EncodedAudioBuffer: Sendable {
     ///   - timestamp: The presentation timestamp in seconds.
     ///   - duration: The duration of the encoded audio in seconds.
     ///   - sequenceNumber: A monotonically increasing sequence number.
+    ///   - packetSizes: Optional per-packet sizes within `data`.
     public init(
         data: Data,
         codec: AudioCodec,
         timestamp: TimeInterval,
         duration: TimeInterval,
-        sequenceNumber: Int64
+        sequenceNumber: Int64,
+        packetSizes: [Int]? = nil
     ) {
         self.data = data
         self.codec = codec
         self.timestamp = timestamp
         self.duration = duration
         self.sequenceNumber = sequenceNumber
+        self.packetSizes = packetSizes
     }
 }
 

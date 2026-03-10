@@ -98,14 +98,15 @@ public actor AACEncoder: AudioEncoderProtocol {
                 codec: "aac", reason: "Encoder not configured"
             )
         }
-        let encoded = try await encoderProvider.encode(
+        let (encoded, packetSizes) = try await encoderProvider.encode(
             data: buffer.data, timestamp: buffer.timestamp)
         return EncodedAudioBuffer(
             data: encoded,
             codec: .aac,
             timestamp: buffer.timestamp,
             duration: buffer.duration,
-            sequenceNumber: buffer.sequenceNumber
+            sequenceNumber: buffer.sequenceNumber,
+            packetSizes: packetSizes
         )
     }
 

@@ -226,7 +226,7 @@ struct AudioToolboxEncoderTests {
 
         let provider = PassthroughAudioEncoder()
         let inputData = Data(repeating: 0x42, count: 1024)
-        let output = try await provider.encode(
+        let (output, _) = try await provider.encode(
             data: inputData, timestamp: 0.0)
         #expect(output == inputData)
     }
