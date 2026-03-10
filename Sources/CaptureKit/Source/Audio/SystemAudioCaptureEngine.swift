@@ -207,8 +207,17 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
                 _ configuration: AudioSourceConfiguration
             ) throws {
                 let session = AVAudioSession.sharedInstance()
+                // Use .playAndRecord with Bluetooth options so that
+                // any preferred Bluetooth input set by the consuming
+                // app (via setPreferredInput) is preserved.
                 try session.setCategory(
-                    .record, mode: .measurement)
+                    .playAndRecord,
+                    mode: .measurement,
+                    options: [
+                        .defaultToSpeaker,
+                        .allowBluetoothHFP,
+                        .allowBluetoothA2DP
+                    ])
                 try session.setPreferredSampleRate(
                     configuration.sampleRate.rawValue)
                 try session.setPreferredIOBufferDuration(
