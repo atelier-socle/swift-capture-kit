@@ -208,6 +208,18 @@ public actor CameraSource: VideoSource {
         _frameStatisticsStream
     }
 
+    /// Enable or disable depth data delivery.
+    ///
+    /// Can be called while capturing to toggle depth output on-the-fly.
+    ///
+    /// - Parameter enabled: Whether to deliver depth data.
+    public func setDepthDataDelivery(_ enabled: Bool) async throws {
+        self.depthDataDelivery = enabled
+        if isCapturing {
+            try await captureEngine.setDepthDataDelivery(enabled)
+        }
+    }
+
     /// Switch camera position without stopping capture.
     ///
     /// - Parameter position: The new camera position.

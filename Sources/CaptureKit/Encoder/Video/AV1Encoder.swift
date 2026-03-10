@@ -52,9 +52,54 @@ public actor AV1Encoder: VideoEncoderProtocol {
     }
 
     /// Whether this encoder uses hardware acceleration.
+    ///
+    /// Performs a real VideoToolbox probe rather than returning a
+    /// hard-coded value, so devices that only *decode* AV1 (but
+    /// cannot encode) correctly report `false`.
     nonisolated public var isHardwareAccelerated: Bool {
-        true
+        Self._hardwareEncodingAvailable
     }
+
+    /// Cached result of the AV1 hardware encoding probe.
+    /// Evaluated once (lazily, thread-safe) via `static let`.
+    private static let _hardwareEncodingAvailable: Bool = {
+        #if canImport(VideoToolbox)
+            // Reuse the same two-stage probe used by configure().
+            var properties: CFDictionary?
+            let queryStatus = VTCopySupportedPropertyDictionaryForEncoder(
+                width: 1920,
+                height: 1080,
+                codecType: kCMVideoCodecType_AV1,
+                encoderSpecification: nil,
+                encoderIDOut: nil,
+                supportedPropertiesOut: &properties
+            )
+            if queryStatus == noErr {
+                return true
+            }
+
+            var session: VTCompressionSession?
+            let createStatus = VTCompressionSessionCreate(
+                allocator: kCFAllocatorDefault,
+                width: 1920,
+                height: 1080,
+                codecType: kCMVideoCodecType_AV1,
+                encoderSpecification: nil,
+                imageBufferAttributes: nil,
+                compressedDataAllocator: nil,
+                outputCallback: nil,
+                refcon: nil,
+                compressionSessionOut: &session
+            )
+            if createStatus == noErr, let session {
+                VTCompressionSessionInvalidate(session)
+                return true
+            }
+            return false
+        #else
+            return false
+        #endif
+    }()
 
     // MARK: - Initialization
 

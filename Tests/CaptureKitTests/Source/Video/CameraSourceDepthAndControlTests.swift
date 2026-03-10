@@ -30,7 +30,7 @@ struct CameraSourceDepthAndControlTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let engine = MockVideoCaptureEngine()
         let source = CameraSource(captureEngine: engine)
-        await source.setDepthDataDelivery(true)
+        try await source.setDepthDataDelivery(true)
         _ = try await source.startCapture()
         let enabled = await engine.depthDataDeliveryEnabled
         #expect(enabled == true)
@@ -44,12 +44,5 @@ struct CameraSourceDepthAndControlTests {
         _ = try await source.startCapture()
         let enabled = await engine.depthDataDeliveryEnabled
         #expect(enabled == false)
-    }
-}
-
-@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-extension CameraSource {
-    func setDepthDataDelivery(_ value: Bool) {
-        self.depthDataDelivery = value
     }
 }
