@@ -80,4 +80,6 @@ actor MockVideoEncoderProvider: VideoEncoderProviding {
     func reset() async {
         resetCallCount += 1
     }
+
+    var formatDescription: (any Sendable)? { nil }
 }

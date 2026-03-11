@@ -3,6 +3,11 @@
 
 import Foundation
 
+#if canImport(VideoToolbox)
+    import CoreMedia
+    import VideoToolbox
+#endif
+
 /// HEVC/H.265 encoder via VideoToolbox.
 ///
 /// 50% more efficient than H.264 at the same quality. Supports HDR10, HLG,
@@ -49,6 +54,78 @@ public actor HEVCEncoder: VideoEncoderProtocol {
     nonisolated public var isHardwareAccelerated: Bool {
         true
     }
+
+    // MARK: - Parameter Sets
+
+    /// HEVC parameter sets extracted from the encoder session.
+    public struct HEVCParameterSets: Sendable {
+        /// Video Parameter Set NAL unit bytes (without start codes).
+        public let vps: Data
+        /// Sequence Parameter Set NAL unit bytes (without start codes).
+        public let sps: Data
+        /// Picture Parameter Set NAL unit bytes (without start codes).
+        public let pps: Data
+    }
+
+    /// The HEVC parameter sets (VPS, SPS, PPS) from the current encoder session.
+    ///
+    /// Available after the first successful ``encode(_:)`` call. Returns `nil`
+    /// if the encoder has not yet produced output or if VideoToolbox is unavailable.
+    ///
+    /// These are the raw NAL unit bytes **without** Annex B start codes.
+    public var parameterSets: HEVCParameterSets? {
+        get async {
+            #if canImport(VideoToolbox)
+                guard let sendable = await encoderProvider.formatDescription else {
+                    return nil
+                }
+                return Self.extractHEVCParameterSets(from: sendable)
+            #else
+                return nil
+            #endif
+        }
+    }
+
+    #if canImport(VideoToolbox)
+        /// Extract VPS, SPS, and PPS from an HEVC format description.
+        nonisolated static func extractHEVCParameterSets(
+            from sendable: any Sendable
+        ) -> HEVCParameterSets? {
+            let ref = sendable as CFTypeRef
+            guard CFGetTypeID(ref) == CMFormatDescriptionGetTypeID() else {
+                return nil
+            }
+            let desc = unsafeDowncast(ref as AnyObject, to: CMFormatDescription.self)
+
+            guard
+                let vps = hevcParameterSet(from: desc, index: 0),
+                let sps = hevcParameterSet(from: desc, index: 1),
+                let pps = hevcParameterSet(from: desc, index: 2)
+            else {
+                return nil
+            }
+            return HEVCParameterSets(vps: vps, sps: sps, pps: pps)
+        }
+
+        private nonisolated static func hevcParameterSet(
+            from desc: CMFormatDescription, index: Int
+        ) -> Data? {
+            var size = 0
+            var pointer: UnsafePointer<UInt8>?
+            let status = CMVideoFormatDescriptionGetHEVCParameterSetAtIndex(
+                desc,
+                parameterSetIndex: index,
+                parameterSetPointerOut: &pointer,
+                parameterSetSizeOut: &size,
+                parameterSetCountOut: nil,
+                nalUnitHeaderLengthOut: nil
+            )
+            guard status == noErr, let pointer, size > 0 else {
+                return nil
+            }
+            return Data(bytes: pointer, count: size)
+        }
+    #endif
 
     // MARK: - Initialization
 

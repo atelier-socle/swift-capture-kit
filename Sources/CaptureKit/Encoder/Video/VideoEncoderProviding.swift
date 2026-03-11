@@ -63,6 +63,13 @@ protocol VideoEncoderProviding: Sendable {
 
     /// Reset the encoder to its initial state.
     func reset() async
+
+    /// The format description from the most recent encode, if available.
+    ///
+    /// For VideoToolbox-backed encoders this is populated after the first
+    /// successful ``encode(data:width:height:timestamp:isKeyFrame:)`` call
+    /// and contains codec-specific parameter sets (e.g. SPS/PPS for H.264).
+    var formatDescription: (any Sendable)? { get async }
 }
 
 /// Passthrough video encoder that returns data unchanged.
@@ -88,4 +95,5 @@ struct PassthroughVideoEncoder: VideoEncoderProviding {
     func updateBitrate(_ bitrate: Int) async throws {}
     func flush() async throws -> Data? { nil }
     func reset() async {}
+    var formatDescription: (any Sendable)? { nil }
 }

@@ -3,6 +3,11 @@
 
 import Foundation
 
+#if canImport(VideoToolbox)
+    import CoreMedia
+    import VideoToolbox
+#endif
+
 /// H.264/AVC encoder via VideoToolbox.
 ///
 /// The most widely compatible video codec. Hardware-accelerated on all Apple devices.
@@ -50,6 +55,86 @@ public actor H264Encoder: VideoEncoderProtocol {
     nonisolated public var isHardwareAccelerated: Bool {
         true
     }
+
+    // MARK: - Parameter Sets
+
+    /// The H.264 parameter sets (SPS, PPS) from the current encoder session.
+    ///
+    /// Available after the first successful ``encode(_:)`` call. Returns `nil`
+    /// if the encoder has not yet produced output or if VideoToolbox is unavailable.
+    ///
+    /// These are the raw NAL unit bytes **without** Annex B start codes.
+    /// Use them to build an AVCDecoderConfigurationRecord for RTMP or
+    /// to supply codec configuration for HLS/MPEG-TS packaging.
+    /// The H.264 parameter sets (SPS, PPS) from the current encoder session.
+    ///
+    /// Available after the first successful ``encode(_:)`` call. Returns `nil`
+    /// if the encoder has not yet produced output or if VideoToolbox is unavailable.
+    ///
+    /// These are the raw NAL unit bytes **without** Annex B start codes.
+    /// Use them to build an AVCDecoderConfigurationRecord for RTMP or
+    /// to supply codec configuration for HLS/MPEG-TS packaging.
+    public var parameterSets: (sps: Data, pps: Data)? {
+        get async {
+            #if canImport(VideoToolbox)
+                guard let sendable = await encoderProvider.formatDescription else {
+                    return nil
+                }
+                return Self.extractH264ParameterSets(from: sendable)
+            #else
+                return nil
+            #endif
+        }
+    }
+
+    #if canImport(VideoToolbox)
+        /// Extract SPS and PPS from an H.264 format description.
+        ///
+        /// - Parameter sendable: The format description as `any Sendable`
+        ///   (expected to be a `CMFormatDescription`).
+        /// - Returns: The SPS and PPS data, or `nil` if extraction fails.
+        nonisolated static func extractH264ParameterSets(
+            from sendable: any Sendable
+        ) -> (sps: Data, pps: Data)? {
+            let ref = sendable as CFTypeRef
+            guard CFGetTypeID(ref) == CMFormatDescriptionGetTypeID() else {
+                return nil
+            }
+            let desc = unsafeDowncast(ref as AnyObject, to: CMFormatDescription.self)
+
+            var spsSize = 0
+            var spsPointer: UnsafePointer<UInt8>?
+            let spsStatus = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+                desc,
+                parameterSetIndex: 0,
+                parameterSetPointerOut: &spsPointer,
+                parameterSetSizeOut: &spsSize,
+                parameterSetCountOut: nil,
+                nalUnitHeaderLengthOut: nil
+            )
+            guard spsStatus == noErr, let spsPointer, spsSize > 0 else {
+                return nil
+            }
+            let sps = Data(bytes: spsPointer, count: spsSize)
+
+            var ppsSize = 0
+            var ppsPointer: UnsafePointer<UInt8>?
+            let ppsStatus = CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+                desc,
+                parameterSetIndex: 1,
+                parameterSetPointerOut: &ppsPointer,
+                parameterSetSizeOut: &ppsSize,
+                parameterSetCountOut: nil,
+                nalUnitHeaderLengthOut: nil
+            )
+            guard ppsStatus == noErr, let ppsPointer, ppsSize > 0 else {
+                return nil
+            }
+            let pps = Data(bytes: ppsPointer, count: ppsSize)
+
+            return (sps: sps, pps: pps)
+        }
+    #endif
 
     // MARK: - Initialization
 

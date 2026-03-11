@@ -14,6 +14,7 @@
     /// actor executor is blocked. No concurrent access occurs.
     private final class EncodedVideoDataBuffer: @unchecked Sendable {
         var data = Data()
+        var formatDescription: CMFormatDescription?
     }
 
     /// C callback for VTCompressionSession output.
@@ -37,6 +38,10 @@
         if let dataPointer {
             buffer.data.append(
                 Data(bytes: dataPointer, count: length))
+        }
+        if buffer.formatDescription == nil {
+            buffer.formatDescription =
+                CMSampleBufferGetFormatDescription(sampleBuffer)
         }
     }
 
@@ -176,9 +181,14 @@
             return result
         }
 
+        var formatDescription: (any Sendable)? {
+            encodedBuffer.formatDescription
+        }
+
         func reset() async {
             dispose()
             encodedBuffer.data = Data()
+            encodedBuffer.formatDescription = nil
         }
 
         /// Disposes the compression session.
