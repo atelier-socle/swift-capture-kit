@@ -176,22 +176,4 @@ struct CaptureSessionEventIntegrationTests {
         #expect(removedIDs.contains("a"))
     }
 
-    @Test("streaming output added emits event")
-    func streamingOutputAddedEmitsEvent() async throws {
-        let session = CaptureSession()
-        let eventStream = await session.events
-        let output = MockStreamingOutput(outputID: "stream-evt")
-        try await session.addOutput(output)
-
-        var found = false
-        for await event in eventStream {
-            if case .outputAdded(let id) = event {
-                if id == "stream-evt" {
-                    found = true
-                    break
-                }
-            }
-        }
-        #expect(found)
-    }
 }

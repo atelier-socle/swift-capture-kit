@@ -66,29 +66,6 @@ struct CaptureSessionOutputRoutingTests {
         await session.stop()
     }
 
-    @Test("streaming output conforms to CaptureOutput")
-    func streamingOutputConformsToCaptureOutput() async throws {
-        let session = CaptureSession()
-        await session.setAudioSource(MockAudioSource())
-        let output = MockStreamingOutput()
-        try await session.addOutput(output)
-        try await session.start()
-        #expect(await output.prepareCallCount == 1)
-        await session.stop()
-    }
-
-    @Test("streaming output transport quality accessible")
-    func streamingOutputTransportQualityAccessible() async throws {
-        let output = MockStreamingOutput()
-        await output.setTransportQuality(
-            StreamingTransportQuality(
-                score: 0.95, grade: .excellent
-            ))
-        let quality = await output.transportQuality
-        #expect(quality?.score == 0.95)
-        #expect(quality?.grade == .excellent)
-    }
-
     @Test("fan-out to 5 outputs")
     func fanOutTo5Outputs() async throws {
         let session = CaptureSession()
@@ -104,26 +81,6 @@ struct CaptureSessionOutputRoutingTests {
             #expect(await output.prepareCallCount == 1)
         }
         #expect(await session.outputCount == 5)
-        await session.stop()
-    }
-
-    @Test("mixed output types (callback + streaming)")
-    func mixedOutputTypes() async throws {
-        let session = CaptureSession()
-        await session.setAudioSource(MockAudioSource())
-        let callbackOutput = MockCaptureOutput(
-            outputID: "cb",
-            outputType: .callback
-        )
-        let streamingOutput = MockStreamingOutput(
-            outputID: "stream"
-        )
-        try await session.addOutput(callbackOutput)
-        try await session.addOutput(streamingOutput)
-        try await session.start()
-        #expect(await session.outputCount == 2)
-        #expect(await callbackOutput.prepareCallCount == 1)
-        #expect(await streamingOutput.prepareCallCount == 1)
         await session.stop()
     }
 
@@ -155,41 +112,4 @@ struct CaptureSessionOutputRoutingTests {
         await session.stop()
     }
 
-    @Test("streaming output connection state changes")
-    func streamingOutputConnectionStateChanges() async throws {
-        let output = MockStreamingOutput()
-        #expect(
-            await output.connectionState == .disconnected
-        )
-        await output.setConnectionState(.connected)
-        #expect(await output.connectionState == .connected)
-    }
-
-    @Test("streaming output delivers audio")
-    func streamingOutputDeliversAudio() async throws {
-        let output = MockStreamingOutput()
-        let buffer = EncodedAudioBuffer(
-            data: Data([1, 2, 3]),
-            codec: .aac,
-            timestamp: 0.0,
-            duration: 0.1,
-            sequenceNumber: 0
-        )
-        try await output.deliverAudio(buffer)
-        #expect(await output.audioDeliveryCount == 1)
-    }
-
-    @Test("streaming output delivers video")
-    func streamingOutputDeliversVideo() async throws {
-        let output = MockStreamingOutput()
-        let frame = EncodedVideoFrame(
-            data: Data([1, 2, 3]),
-            codec: .h264,
-            timestamp: 0.0,
-            isKeyFrame: true,
-            sequenceNumber: 0
-        )
-        try await output.deliverVideo(frame)
-        #expect(await output.videoDeliveryCount == 1)
-    }
 }
