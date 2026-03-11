@@ -207,6 +207,8 @@ public actor HEVCEncoder: VideoEncoderProtocol {
     public func updateBitrate(_ bitrate: Int) async throws {
         try await encoderProvider.updateBitrate(bitrate)
         self.configuration = HEVCEncoderConfiguration(
+            resolution: configuration.resolution,
+            frameRate: configuration.frameRate,
             bitrate: bitrate,
             keyFrameInterval: configuration.keyFrameInterval,
             realTime: configuration.realTime
@@ -241,10 +243,11 @@ public actor HEVCEncoder: VideoEncoderProtocol {
         self.configuration = config
 
         try await encoderProvider.configure(
-            width: 1920, height: 1080,
+            width: config.resolution.width,
+            height: config.resolution.height,
             codec: .hevc,
             bitrate: config.bitrate,
-            frameRate: 30.0,
+            frameRate: config.frameRate.value,
             keyFrameInterval: config.keyFrameInterval,
             realTime: config.realTime,
             profileLevel: config.profile.rawValue

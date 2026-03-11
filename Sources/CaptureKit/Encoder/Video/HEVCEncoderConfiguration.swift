@@ -5,6 +5,10 @@
 public struct HEVCEncoderConfiguration: Sendable, Equatable {
     /// Encoding profile.
     public var profile: HEVCProfile
+    /// Target resolution for the encoder session.
+    public var resolution: VideoResolution
+    /// Target frame rate for the encoder session.
+    public var frameRate: FrameRate
     /// Target bitrate in bits per second.
     public var bitrate: Int
     /// Bitrate control mode.
@@ -23,6 +27,8 @@ public struct HEVCEncoderConfiguration: Sendable, Equatable {
     /// Creates a new HEVC encoder configuration.
     public init(
         profile: HEVCProfile = .main,
+        resolution: VideoResolution = .p1080,
+        frameRate: FrameRate = .fps30,
         bitrate: Int = 5_000_000,
         bitrateMode: VideoBitrateMode = .average,
         keyFrameInterval: Int = 60,
@@ -32,6 +38,8 @@ public struct HEVCEncoderConfiguration: Sendable, Equatable {
         alphaChannel: Bool = false
     ) {
         self.profile = profile
+        self.resolution = resolution
+        self.frameRate = frameRate
         self.bitrate = bitrate
         self.bitrateMode = bitrateMode
         self.keyFrameInterval = keyFrameInterval
@@ -53,29 +61,29 @@ public struct HEVCEncoderConfiguration: Sendable, Equatable {
 
     /// SDR streaming 1080p — 5 Mbps, real-time.
     public static let streaming1080p = HEVCEncoderConfiguration(
-        profile: .main, bitrate: 5_000_000,
-        bitrateMode: .average, keyFrameInterval: 60,
+        profile: .main, resolution: .p1080, frameRate: .fps30,
+        bitrate: 5_000_000, bitrateMode: .average, keyFrameInterval: 60,
         bFrames: true, realTime: true, hdrMode: .sdr
     )
 
     /// HDR10 4K — Main10 profile, 25 Mbps.
     public static let hdr4K = HEVCEncoderConfiguration(
-        profile: .main10, bitrate: 25_000_000,
-        bitrateMode: .average, keyFrameInterval: 60,
+        profile: .main10, resolution: .uhd4K, frameRate: .fps30,
+        bitrate: 25_000_000, bitrateMode: .average, keyFrameInterval: 60,
         bFrames: true, realTime: true, hdrMode: .hdr10
     )
 
     /// HLG broadcast — Main10 profile, 8 Mbps.
     public static let hlgBroadcast = HEVCEncoderConfiguration(
-        profile: .main10, bitrate: 8_000_000,
-        bitrateMode: .average, keyFrameInterval: 60,
+        profile: .main10, resolution: .p1080, frameRate: .fps30,
+        bitrate: 8_000_000, bitrateMode: .average, keyFrameInterval: 60,
         bFrames: true, realTime: true, hdrMode: .hlg
     )
 
     /// Screen recording — Main profile, 8 Mbps.
     public static let screenRecording = HEVCEncoderConfiguration(
-        profile: .main, bitrate: 8_000_000,
-        bitrateMode: .variable, keyFrameInterval: 120,
+        profile: .main, resolution: .p1080, frameRate: .fps30,
+        bitrate: 8_000_000, bitrateMode: .variable, keyFrameInterval: 120,
         bFrames: false, realTime: true, hdrMode: .sdr
     )
 }

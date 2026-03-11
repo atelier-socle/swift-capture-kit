@@ -218,6 +218,8 @@ public actor H264Encoder: VideoEncoderProtocol {
         self.configuration = H264EncoderConfiguration(
             profile: configuration.profile,
             level: configuration.level,
+            resolution: configuration.resolution,
+            frameRate: configuration.frameRate,
             bitrate: bitrate,
             bitrateMode: configuration.bitrateMode,
             keyFrameInterval: configuration.keyFrameInterval,
@@ -256,10 +258,11 @@ public actor H264Encoder: VideoEncoderProtocol {
         self.configuration = config
 
         try await encoderProvider.configure(
-            width: 1920, height: 1080,
+            width: config.resolution.width,
+            height: config.resolution.height,
             codec: .h264,
             bitrate: config.bitrate,
-            frameRate: 30.0,
+            frameRate: config.frameRate.value,
             keyFrameInterval: config.keyFrameInterval,
             realTime: config.realTime,
             profileLevel: config.profile.rawValue

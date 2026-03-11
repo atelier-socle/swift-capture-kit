@@ -7,6 +7,10 @@ public struct H264EncoderConfiguration: Sendable, Equatable {
     public var profile: H264Profile
     /// Encoding level (determines max resolution/bitrate).
     public var level: H264Level
+    /// Target resolution for the encoder session.
+    public var resolution: VideoResolution
+    /// Target frame rate for the encoder session.
+    public var frameRate: FrameRate
     /// Target bitrate in bits per second.
     public var bitrate: Int
     /// Bitrate control mode.
@@ -26,6 +30,8 @@ public struct H264EncoderConfiguration: Sendable, Equatable {
     public init(
         profile: H264Profile = .high,
         level: H264Level = .auto,
+        resolution: VideoResolution = .p1080,
+        frameRate: FrameRate = .fps30,
         bitrate: Int = 5_000_000,
         bitrateMode: VideoBitrateMode = .average,
         keyFrameInterval: Int = 60,
@@ -36,6 +42,8 @@ public struct H264EncoderConfiguration: Sendable, Equatable {
     ) {
         self.profile = profile
         self.level = level
+        self.resolution = resolution
+        self.frameRate = frameRate
         self.bitrate = bitrate
         self.bitrateMode = bitrateMode
         self.keyFrameInterval = keyFrameInterval
@@ -74,29 +82,29 @@ public struct H264EncoderConfiguration: Sendable, Equatable {
 
     /// Streaming 720p — Main profile, 2.5 Mbps.
     public static let streaming720p = H264EncoderConfiguration(
-        profile: .main, level: .level31, bitrate: 2_500_000,
-        bitrateMode: .average, keyFrameInterval: 60,
+        profile: .main, level: .level31, resolution: .p720, frameRate: .fps30,
+        bitrate: 2_500_000, bitrateMode: .average, keyFrameInterval: 60,
         bFrames: true, entropyMode: .cabac, realTime: true
     )
 
     /// Streaming 1080p — High profile, 4.5 Mbps.
     public static let streaming1080p = H264EncoderConfiguration(
-        profile: .high, level: .level41, bitrate: 4_500_000,
-        bitrateMode: .average, keyFrameInterval: 60,
+        profile: .high, level: .level41, resolution: .p1080, frameRate: .fps30,
+        bitrate: 4_500_000, bitrateMode: .average, keyFrameInterval: 60,
         bFrames: true, entropyMode: .cabac, realTime: true
     )
 
     /// Low latency — Baseline profile, no B-frames, CAVLC.
     public static let lowLatency = H264EncoderConfiguration(
-        profile: .baseline, level: .auto, bitrate: 2_000_000,
-        bitrateMode: .constant, keyFrameInterval: 30,
+        profile: .baseline, level: .auto, resolution: .p720, frameRate: .fps30,
+        bitrate: 2_000_000, bitrateMode: .constant, keyFrameInterval: 30,
         bFrames: false, entropyMode: .cavlc, realTime: true
     )
 
     /// Archive — High profile, high bitrate, quality-optimized.
     public static let archive = H264EncoderConfiguration(
-        profile: .high, level: .auto, bitrate: 20_000_000,
-        bitrateMode: .variable, keyFrameInterval: 60,
+        profile: .high, level: .auto, resolution: .p1080, frameRate: .fps30,
+        bitrate: 20_000_000, bitrateMode: .variable, keyFrameInterval: 60,
         bFrames: true, entropyMode: .cabac, realTime: false
     )
 }
