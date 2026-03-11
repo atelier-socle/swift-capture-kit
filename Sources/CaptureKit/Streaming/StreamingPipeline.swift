@@ -158,18 +158,52 @@ public actor StreamingPipeline {
         encoder: any AudioEncoderProtocol
     ) async throws {
         let audioStream = try await source.startCapture()
+        let transport = self.transport
 
         let task = Task { @concurrent [weak self] in
+            print("🔴 [Pipeline] Audio producer starting")
+            var localBytes: Int64 = 0
+            var localCount: Int64 = 0
             for await buffer in audioStream {
-                guard let self, await self.isStreaming else { break }
+                print(
+                    "🔊 [Pipeline] Audio buffer received, size: \(buffer.data.count)"
+                )
+                guard !Task.isCancelled else {
+                    print(
+                        "🔴 [Pipeline] Audio producer CANCELLED after \(localCount) buffers"
+                    )
+                    break
+                }
                 do {
                     let encoded = try await encoder.encode(buffer)
                     let packet = MediaPacket.audio(encoded)
-                    try await self.transport.send(packet)
-                    await self.recordAudioSent(dataSize: encoded.data.count)
+                    try await transport.send(packet)
+                    localBytes += Int64(encoded.data.count)
+                    localCount += 1
+                    if localCount % 30 == 0 {
+                        await self?.flushAudioStats(
+                            bytes: localBytes, count: localCount)
+                        localBytes = 0
+                        localCount = 0
+                    }
                 } catch {
-                    if Task.isCancelled { break }
+                    print(
+                        "🔴 [Pipeline] Audio producer ERROR: \(error)"
+                    )
+                    if Task.isCancelled {
+                        print(
+                            "🔴 [Pipeline] Audio producer CANCELLED in catch after \(localCount) buffers"
+                        )
+                        break
+                    }
                 }
+            }
+            print(
+                "🔴 [Pipeline] Audio producer FOR LOOP ENDED — \(localCount) buffers total, Task.isCancelled=\(Task.isCancelled)"
+            )
+            if localCount > 0 {
+                await self?.flushAudioStats(
+                    bytes: localBytes, count: localCount)
             }
         }
         producerTasks.append(task)
@@ -182,24 +216,38 @@ public actor StreamingPipeline {
         encoder: any VideoEncoderProtocol
     ) async throws {
         let videoStream = try await source.startCapture()
+        let transport = self.transport
 
         // Send video configuration after first keyframe
         let task = Task { @concurrent [weak self] in
             var sentConfig = false
+            var localBytes: Int64 = 0
+            var localCount: Int64 = 0
             for await frame in videoStream {
-                guard let self, await self.isStreaming else { break }
+                guard !Task.isCancelled else { break }
                 do {
                     let encoded = try await encoder.encode(frame)
                     if !sentConfig && encoded.isKeyFrame {
-                        await self.sendVideoConfiguration(encoder: encoder)
+                        await self?.sendVideoConfiguration(encoder: encoder)
                         sentConfig = true
                     }
                     let packet = MediaPacket.video(encoded)
-                    try await self.transport.send(packet)
-                    await self.recordVideoSent(dataSize: encoded.data.count)
+                    try await transport.send(packet)
+                    localBytes += Int64(encoded.data.count)
+                    localCount += 1
+                    if localCount % 30 == 0 {
+                        await self?.flushVideoStats(
+                            bytes: localBytes, count: localCount)
+                        localBytes = 0
+                        localCount = 0
+                    }
                 } catch {
                     if Task.isCancelled { break }
                 }
+            }
+            if localCount > 0 {
+                await self?.flushVideoStats(
+                    bytes: localBytes, count: localCount)
             }
         }
         producerTasks.append(task)
@@ -255,23 +303,55 @@ public actor StreamingPipeline {
         }
         producerTasks.append(videoTask)
 
-        // Consumer loop — single sequential path to transport
+        // Consumer loop — single sequential path to transport.
+        // Transport is captured locally to avoid actor hops on every packet.
+        let transport = self.transport
         consumerTask = Task { @concurrent [weak self] in
+            var localAudioBytes: Int64 = 0
+            var localAudioCount: Int64 = 0
+            var localVideoBytes: Int64 = 0
+            var localVideoCount: Int64 = 0
+            var totalCount: Int64 = 0
             for await packet in muxStream {
-                guard let self, await self.isStreaming else { break }
+                guard !Task.isCancelled else { break }
                 do {
-                    try await self.transport.send(packet)
+                    try await transport.send(packet)
                     switch packet {
                     case .video(let frame):
-                        await self.recordVideoSent(
-                            dataSize: frame.data.count)
+                        localVideoBytes += Int64(frame.data.count)
+                        localVideoCount += 1
                     case .audio(let buffer):
-                        await self.recordAudioSent(
-                            dataSize: buffer.data.count)
+                        localAudioBytes += Int64(buffer.data.count)
+                        localAudioCount += 1
+                    }
+                    totalCount += 1
+                    // Temporary debug log
+                    if totalCount % 100 == 0 {
+                        print(
+                            "📊 [Pipeline] Mux stats: \(localAudioCount) audio, \(localVideoCount) video packets consumed"
+                        )
+                    }
+                    if totalCount % 30 == 0 {
+                        await self?.flushMuxStats(
+                            audioBytes: localAudioBytes,
+                            audioCount: localAudioCount,
+                            videoBytes: localVideoBytes,
+                            videoCount: localVideoCount)
+                        localAudioBytes = 0
+                        localAudioCount = 0
+                        localVideoBytes = 0
+                        localVideoCount = 0
                     }
                 } catch {
                     if Task.isCancelled { break }
                 }
+            }
+            if localAudioCount > 0 || localVideoCount > 0 {
+                await self?.flushMuxStats(
+                    audioBytes: localAudioBytes,
+                    audioCount: localAudioCount,
+                    videoBytes: localVideoBytes,
+                    videoCount: localVideoCount)
             }
         }
     }
@@ -326,5 +406,24 @@ public actor StreamingPipeline {
     private func recordAudioSent(dataSize: Int) {
         _bytesSent += Int64(dataSize)
         _audioBufferCount += 1
+    }
+
+    private func flushAudioStats(bytes: Int64, count: Int64) {
+        _bytesSent += bytes
+        _audioBufferCount += count
+    }
+
+    private func flushVideoStats(bytes: Int64, count: Int64) {
+        _bytesSent += bytes
+        _videoFrameCount += count
+    }
+
+    private func flushMuxStats(
+        audioBytes: Int64, audioCount: Int64,
+        videoBytes: Int64, videoCount: Int64
+    ) {
+        _bytesSent += audioBytes + videoBytes
+        _audioBufferCount += audioCount
+        _videoFrameCount += videoCount
     }
 }
