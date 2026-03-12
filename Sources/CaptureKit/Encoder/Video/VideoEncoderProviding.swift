@@ -70,6 +70,13 @@ protocol VideoEncoderProviding: Sendable {
     /// successful ``encode(data:width:height:timestamp:isKeyFrame:)`` call
     /// and contains codec-specific parameter sets (e.g. SPS/PPS for H.264).
     var formatDescription: (any Sendable)? { get async }
+
+    /// Whether the most recently encoded frame was a key frame (sync sample),
+    /// as reported by the encoder output (e.g. CMSampleBuffer attachments).
+    ///
+    /// This reflects the **actual** encoder decision, which may differ from
+    /// the `isKeyFrame` parameter passed to ``encode(data:width:height:timestamp:isKeyFrame:)``.
+    var lastFrameIsKeyFrame: Bool { get async }
 }
 
 /// Passthrough video encoder that returns data unchanged.
@@ -96,4 +103,5 @@ struct PassthroughVideoEncoder: VideoEncoderProviding {
     func flush() async throws -> Data? { nil }
     func reset() async {}
     var formatDescription: (any Sendable)? { nil }
+    var lastFrameIsKeyFrame: Bool { true }
 }

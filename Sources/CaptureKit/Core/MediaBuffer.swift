@@ -186,6 +186,18 @@ public struct EncodedAudioBuffer: Sendable {
         self.sequenceNumber = sequenceNumber
         self.packetSizes = packetSizes
     }
+
+    /// Returns a copy with the timestamp replaced.
+    public func withTimestamp(_ newTimestamp: TimeInterval) -> EncodedAudioBuffer {
+        EncodedAudioBuffer(
+            data: data,
+            codec: codec,
+            timestamp: newTimestamp,
+            duration: duration,
+            sequenceNumber: sequenceNumber,
+            packetSizes: packetSizes
+        )
+    }
 }
 
 /// An encoded video frame containing compressed video data.
@@ -225,5 +237,16 @@ public struct EncodedVideoFrame: Sendable {
         self.timestamp = timestamp
         self.isKeyFrame = isKeyFrame
         self.sequenceNumber = sequenceNumber
+    }
+
+    /// Returns a copy with the timestamp replaced.
+    public func withTimestamp(_ newTimestamp: TimeInterval) -> EncodedVideoFrame {
+        EncodedVideoFrame(
+            data: data,
+            codec: codec,
+            timestamp: newTimestamp,
+            isKeyFrame: isKeyFrame,
+            sequenceNumber: sequenceNumber
+        )
     }
 }

@@ -164,20 +164,21 @@ public actor AV1Encoder: VideoEncoderProtocol {
             )
         }
 
-        let isKey = frame.isKeyFrame || pendingKeyFrame
+        let requestKey = pendingKeyFrame
         let encoded = try await encoderProvider.encode(
             data: frame.data,
             width: frame.format.resolution.width,
             height: frame.format.resolution.height,
             timestamp: frame.timestamp,
-            isKeyFrame: isKey
+            isKeyFrame: requestKey
         )
         pendingKeyFrame = false
+        let actualIsKey = await encoderProvider.lastFrameIsKeyFrame
         return EncodedVideoFrame(
             data: encoded,
             codec: codec,
             timestamp: frame.timestamp,
-            isKeyFrame: isKey,
+            isKeyFrame: actualIsKey,
             sequenceNumber: frame.sequenceNumber
         )
     }

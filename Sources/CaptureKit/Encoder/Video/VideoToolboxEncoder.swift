@@ -15,6 +15,9 @@
     private final class EncodedVideoDataBuffer: @unchecked Sendable {
         var data = Data()
         var formatDescription: CMFormatDescription?
+        /// Whether the last encoded frame was a sync (key) frame,
+        /// as reported by VideoToolbox sample buffer attachments.
+        var isKeyFrame = false
     }
 
     /// C callback for VTCompressionSession output.
@@ -42,6 +45,18 @@
         if buffer.formatDescription == nil {
             buffer.formatDescription =
                 CMSampleBufferGetFormatDescription(sampleBuffer)
+        }
+        // Determine keyframe status from sample buffer attachments.
+        // kCMSampleAttachmentKey_DependsOnOthers is the most reliable indicator:
+        // absent or false → keyframe (IDR), true → P/B-frame.
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sampleBuffer, createIfNecessary: false) as? [[CFString: Any]],
+           let first = attachments.first {
+            let dependsOnOthers = first[kCMSampleAttachmentKey_DependsOnOthers] as? Bool ?? false
+            buffer.isKeyFrame = !dependsOnOthers
+        } else {
+            // No attachments → treat as keyframe (IDR).
+            buffer.isKeyFrame = true
         }
     }
 
@@ -183,6 +198,10 @@
 
         var formatDescription: (any Sendable)? {
             encodedBuffer.formatDescription
+        }
+
+        var lastFrameIsKeyFrame: Bool {
+            encodedBuffer.isKeyFrame
         }
 
         func reset() async {

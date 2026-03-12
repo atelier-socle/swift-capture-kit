@@ -58,9 +58,18 @@ public actor StreamingPipeline {
     private var muxContinuation: AsyncStream<MediaPacket>.Continuation?
     private var startTime: Date?
 
+    // Monotonic epoch captured at start(). All packet timestamps are
+    // restamped relative to this instant so every track (audio + video)
+    // shares the same clock regardless of its source time base.
+    private var pipelineEpoch: ContinuousClock.Instant?
+
     // Tracks how many producers are still active so the mux continuation
     // is only finished once all producers complete.
     private var activeProducerCount = 0
+
+    // In muxed mode, audio packets are dropped until the first video
+    // packet arrives so both tracks start together.
+    private var firstVideoReceived = false
 
     // Stats accumulators
     private var _bytesSent: Int64 = 0
@@ -113,6 +122,8 @@ public actor StreamingPipeline {
         try await transport.connect()
         state = .streaming
         startTime = Date()
+        pipelineEpoch = .now
+        firstVideoReceived = false
 
         switch mode {
         case .audioOnly(let source, let encoder):
@@ -176,7 +187,9 @@ public actor StreamingPipeline {
                 }
                 do {
                     let encoded = try await encoder.encode(buffer)
+                    let ts = await self?.pipelineTimestamp ?? 0
                     let packet = MediaPacket.audio(encoded)
+                        .withTimestamp(ts)
                     try await transport.send(packet)
                     localBytes += Int64(encoded.data.count)
                     localCount += 1
@@ -231,7 +244,9 @@ public actor StreamingPipeline {
                         await self?.sendVideoConfiguration(encoder: encoder)
                         sentConfig = true
                     }
+                    let ts = await self?.pipelineTimestamp ?? 0
                     let packet = MediaPacket.video(encoded)
+                        .withTimestamp(ts)
                     try await transport.send(packet)
                     localBytes += Int64(encoded.data.count)
                     localCount += 1
@@ -265,14 +280,18 @@ public actor StreamingPipeline {
         muxContinuation = continuation
         activeProducerCount = 2
 
-        // Audio producer
+        // Audio producer — gates on firstVideoReceived so both tracks
+        // start together (avoids audio burst before camera warm-up).
         let audioStream = try await audioSource.startCapture()
         let audioTask = Task { @concurrent [weak self] in
             for await buffer in audioStream {
                 guard !Task.isCancelled else { break }
+                // Drop audio until first video frame arrives.
+                guard await self?.firstVideoReceived == true else { continue }
                 do {
                     let encoded = try await audioEncoder.encode(buffer)
-                    continuation.yield(.audio(encoded))
+                    let ts = await self?.pipelineTimestamp ?? 0
+                    continuation.yield(.audio(encoded.withTimestamp(ts)))
                 } catch {
                     if Task.isCancelled { break }
                 }
@@ -281,7 +300,8 @@ public actor StreamingPipeline {
         }
         producerTasks.append(audioTask)
 
-        // Video producer — waits for first keyframe to extract parameter sets
+        // Video producer — waits for first keyframe to extract parameter sets.
+        // Also gates audio: sets firstVideoReceived so audio can start flowing.
         let videoStream = try await videoSource.startCapture()
         let videoTask = Task { @concurrent [weak self] in
             var sentConfig = false
@@ -294,7 +314,12 @@ public actor StreamingPipeline {
                             encoder: videoEncoder)
                         sentConfig = true
                     }
-                    continuation.yield(.video(encoded))
+                    // Signal audio producer that video has started.
+                    if await self?.firstVideoReceived == false {
+                        await self?.setFirstVideoReceived()
+                    }
+                    let ts = await self?.pipelineTimestamp ?? 0
+                    continuation.yield(.video(encoded.withTimestamp(ts)))
                 } catch {
                     if Task.isCancelled { break }
                 }
@@ -394,8 +419,21 @@ public actor StreamingPipeline {
 
     // MARK: - Internal Helpers
 
+    private func setFirstVideoReceived() {
+        firstVideoReceived = true
+    }
+
     private var isStreaming: Bool {
         state == .streaming
+    }
+
+    /// Seconds elapsed since ``pipelineEpoch`` — used to restamp packets
+    /// onto a single monotonic timeline.
+    private var pipelineTimestamp: TimeInterval {
+        guard let epoch = pipelineEpoch else { return 0 }
+        let elapsed = ContinuousClock.now - epoch
+        return Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) * 1e-18
     }
 
     private func recordVideoSent(dataSize: Int) {

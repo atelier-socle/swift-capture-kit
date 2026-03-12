@@ -138,8 +138,26 @@ struct StreamingPipelineTests {
 
     @Test("muxed mode interleaves audio and video")
     func muxedMode() async throws {
-        let (audioSource, _) = makeFiniteAudioSource(bufferCount: 5)
-        let (videoSource, _) = makeFiniteVideoSource(frameCount: 3)
+        // Audio source starts yielding after a short delay (simulating
+        // real-world: audio encoder ready slightly before camera).
+        // Video source yields after a slightly longer delay (camera warm-up).
+        // The pipeline gates audio until the first video frame, so some
+        // early audio buffers may be dropped.
+        let audioSource = PipelineTestIntervalAudioSource(
+            buffers: (0..<10).map { i in
+                makeAudioBuffer(timestamp: Double(i) * 0.02, seq: Int64(i))
+            },
+            intervalMilliseconds: 20
+        )
+        let videoSource = PipelineTestDelayedVideoSource(
+            frames: (0..<3).map { i in
+                makeVideoFrame(
+                    timestamp: Double(i) / 30.0,
+                    isKeyFrame: i == 0,
+                    seq: Int64(i))
+            },
+            delayMilliseconds: 50
+        )
         let audioEncoder = MockAudioEncoder()
         let videoEncoder = MockVideoEncoder()
         let transport = MockStreamingTransport()
@@ -155,9 +173,10 @@ struct StreamingPipelineTests {
         )
         try await pipeline.start()
 
-        // Wait for all 8 packets (5 audio + 3 video)
-        for _ in 0..<60 {
-            if await transport.sentPackets.count >= 8 { break }
+        // Wait for packets — 3 video + some audio after gate opens.
+        for _ in 0..<80 {
+            let count = await transport.sentPackets.count
+            if count >= 6 { break }
             try await Task.sleep(for: .milliseconds(50))
         }
 
@@ -171,8 +190,12 @@ struct StreamingPipelineTests {
             return false
         }.count
 
-        #expect(audioCount == 5)
+        // All 3 video frames must arrive.
         #expect(videoCount == 3)
+        // Audio is gated until first video — some buffers arrive after
+        // the gate opens. With 10 buffers spaced 20ms apart and a 50ms
+        // video delay, roughly 7-8 audio buffers should pass.
+        #expect(audioCount >= 1)
 
         await pipeline.stop()
     }
@@ -356,6 +379,94 @@ actor PipelineTestVideoSource: VideoSource {
                 continuation.yield(frame)
             }
             continuation.finish()
+        }
+    }
+
+    func stopCapture() async {}
+}
+
+/// Audio source that yields buffers with intervals, simulating real-time audio.
+actor PipelineTestIntervalAudioSource: AudioSource {
+    let sourceID = "test-audio-interval"
+    let displayName = "Test Audio (Interval)"
+    let sourceType: AudioSourceType = .microphone
+    nonisolated let availability: SourceAvailability = .available
+
+    private let buffers: [CaptureKit.AudioBuffer]
+    private let intervalMilliseconds: Int
+
+    var supportedFormats: [AudioFormat] { [] }
+    var activeFormat: AudioFormat? { nil }
+    var isCapturing: Bool { false }
+
+    nonisolated var audioLevel: AsyncStream<AudioLevelSample> {
+        AsyncStream { $0.finish() }
+    }
+
+    init(buffers: [CaptureKit.AudioBuffer], intervalMilliseconds: Int) {
+        self.buffers = buffers
+        self.intervalMilliseconds = intervalMilliseconds
+    }
+
+    func configure(
+        _ configuration: AudioSourceConfiguration
+    ) async throws {}
+
+    func startCapture() async throws -> AsyncStream<CaptureKit.AudioBuffer> {
+        let captured = buffers
+        let interval = intervalMilliseconds
+        return AsyncStream { continuation in
+            Task {
+                for buffer in captured {
+                    continuation.yield(buffer)
+                    try? await Task.sleep(for: .milliseconds(interval))
+                }
+                continuation.finish()
+            }
+        }
+    }
+
+    func stopCapture() async {}
+}
+
+/// Video source that waits before yielding frames, simulating camera warm-up.
+actor PipelineTestDelayedVideoSource: VideoSource {
+    let sourceID = "test-video-delayed"
+    let displayName = "Test Video (Delayed)"
+    let sourceType: VideoSourceType = .builtInCamera
+    nonisolated let availability: SourceAvailability = .available
+
+    private let frames: [VideoFrame]
+    private let delayMilliseconds: Int
+
+    var supportedFormats: [VideoFormat] { [] }
+    var activeFormat: VideoFormat? { nil }
+    var isCapturing: Bool { false }
+
+    nonisolated var frameStatistics: AsyncStream<FrameStatisticsSample> {
+        AsyncStream { $0.finish() }
+    }
+
+    init(frames: [VideoFrame], delayMilliseconds: Int) {
+        self.frames = frames
+        self.delayMilliseconds = delayMilliseconds
+    }
+
+    func configure(
+        _ configuration: VideoSourceConfiguration
+    ) async throws {}
+
+    func startCapture() async throws -> AsyncStream<VideoFrame> {
+        let captured = frames
+        let delay = delayMilliseconds
+        return AsyncStream { continuation in
+            Task {
+                try? await Task.sleep(for: .milliseconds(delay))
+                for frame in captured {
+                    continuation.yield(frame)
+                }
+                continuation.finish()
+            }
         }
     }
 

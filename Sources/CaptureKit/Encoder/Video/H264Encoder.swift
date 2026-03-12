@@ -188,20 +188,27 @@ public actor H264Encoder: VideoEncoderProtocol {
             )
         }
 
-        let isKey = frame.isKeyFrame || pendingKeyFrame
+        // Only force keyframe when explicitly requested via forceKeyFrame().
+        // Raw VideoFrame.isKeyFrame is always true (uncompressed frames are
+        // independent) and must NOT be forwarded to VT — it would override
+        // the GOP interval and produce all-keyframes.
+        let requestKey = pendingKeyFrame
         let encoded = try await encoderProvider.encode(
             data: frame.data,
             width: frame.format.resolution.width,
             height: frame.format.resolution.height,
             timestamp: frame.timestamp,
-            isKeyFrame: isKey
+            isKeyFrame: requestKey
         )
         pendingKeyFrame = false
+        // Use the actual keyframe status from the encoder output
+        // (CMSampleBuffer attachments), not the input request.
+        let actualIsKey = await encoderProvider.lastFrameIsKeyFrame
         return EncodedVideoFrame(
             data: encoded,
             codec: codec,
             timestamp: frame.timestamp,
-            isKeyFrame: isKey,
+            isKeyFrame: actualIsKey,
             sequenceNumber: frame.sequenceNumber
         )
     }

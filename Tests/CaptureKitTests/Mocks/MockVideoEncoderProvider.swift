@@ -82,4 +82,5 @@ actor MockVideoEncoderProvider: VideoEncoderProviding {
     }
 
     var formatDescription: (any Sendable)? { nil }
+    var lastFrameIsKeyFrame: Bool { true }
 }

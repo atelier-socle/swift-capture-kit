@@ -21,4 +21,14 @@ public enum MediaPacket: Sendable {
         case .audio(let buffer): buffer.timestamp
         }
     }
+
+    /// Returns a copy of this packet with its timestamp replaced.
+    public func withTimestamp(_ newTimestamp: TimeInterval) -> MediaPacket {
+        switch self {
+        case .video(let frame):
+            .video(frame.withTimestamp(newTimestamp))
+        case .audio(let buffer):
+            .audio(buffer.withTimestamp(newTimestamp))
+        }
+    }
 }
