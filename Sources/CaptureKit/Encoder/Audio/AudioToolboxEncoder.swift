@@ -54,12 +54,23 @@
     /// Supports: AAC (all profiles), ALAC, Opus, FLAC, MP3.
     /// PCM is passthrough (no converter needed).
     /// Actor isolation protects the non-Sendable AudioConverterRef.
+    ///
+    /// For codecs with a fixed frame size (e.g. AAC-LC = 1024 samples),
+    /// incoming PCM buffers are accumulated internally and fed to the
+    /// converter in exact multiples of `mFramesPerPacket`. This decouples
+    /// the capture buffer size (e.g. 960 samples at 20 ms / 48 kHz) from
+    /// the codec frame size, preventing `-10877` (insufficient input) errors.
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     actor AudioToolboxEncoder: AudioEncoderProviding {
 
         private var audioConverter: AudioConverterRef?
         private var outputASBD: AudioStreamBasicDescription?
         private var inputASBD: AudioStreamBasicDescription?
+
+        /// PCM sample accumulator. Bridges the gap between the capture
+        /// buffer size and the codec frame size (e.g. 960 vs 1024 for
+        /// AAC-LC at 48 kHz / 20 ms buffers).
+        private var pcmAccumulator = Data()
 
         func configure(
             inputFormat: AudioFormat,
@@ -73,6 +84,8 @@
                 AudioConverterDispose(existing)
                 audioConverter = nil
             }
+
+            pcmAccumulator = Data()
 
             // Build input ASBD (Linear PCM Float32)
             var inASBD = AudioStreamBasicDescription(
@@ -144,11 +157,69 @@
                 )
             }
 
-            return try encodeWithConverter(
-                converter: converter,
-                inputASBD: inASBD,
-                outputASBD: outASBD,
-                data: data
+            let bytesPerFrame = Int(inASBD.mBytesPerFrame)
+            guard bytesPerFrame > 0 else {
+                throw CaptureError.encodingFailed(
+                    codec: "audio",
+                    reason: "Invalid input format"
+                )
+            }
+
+            let framesPerPacket = Int(outASBD.mFramesPerPacket)
+
+            // Codecs without a fixed frame size (PCM, etc.) — pass
+            // through directly, no accumulation needed.
+            if framesPerPacket <= 1 {
+                return try encodeDirect(
+                    converter: converter,
+                    inputASBD: inASBD,
+                    outputASBD: outASBD,
+                    data: data
+                )
+            }
+
+            // Accumulate incoming PCM samples.
+            pcmAccumulator.append(data)
+
+            let bytesPerPacket = framesPerPacket * bytesPerFrame
+
+            // Not enough samples for a single codec frame yet.
+            guard pcmAccumulator.count >= bytesPerPacket else {
+                return (Data(), packetSizes: nil)
+            }
+
+            // Encode as many complete frames as possible.
+            var encodedOutput = Data()
+            var allPacketSizes: [Int] = []
+
+            while pcmAccumulator.count >= bytesPerPacket {
+                let chunk = Data(pcmAccumulator.prefix(bytesPerPacket))
+                pcmAccumulator.removeFirst(bytesPerPacket)
+
+                let (encoded, sizes) = try encodeExactFrame(
+                    converter: converter,
+                    inputASBD: inASBD,
+                    outputASBD: outASBD,
+                    data: chunk,
+                    frameCount: framesPerPacket
+                )
+
+                if !encoded.isEmpty {
+                    encodedOutput.append(encoded)
+                    if let sizes {
+                        allPacketSizes.append(contentsOf: sizes)
+                    }
+                }
+            }
+
+            if encodedOutput.isEmpty {
+                return (Data(), packetSizes: nil)
+            }
+
+            return (
+                encodedOutput,
+                packetSizes: allPacketSizes.isEmpty
+                    ? nil : allPacketSizes
             )
         }
 
@@ -160,6 +231,7 @@
             if let converter = audioConverter {
                 AudioConverterReset(converter)
             }
+            pcmAccumulator = Data()
         }
 
         private func formatID(for codec: AudioCodec) -> AudioFormatID {
@@ -179,23 +251,53 @@
                 AudioConverterDispose(converter)
                 audioConverter = nil
             }
+            pcmAccumulator = Data()
         }
 
         // MARK: - Encoding
 
-        private func encodeWithConverter(
+        /// Encode exactly `framesPerPacket` PCM frames into one codec
+        /// packet. Used by the accumulation path.
+        private func encodeExactFrame(
+            converter: AudioConverterRef,
+            inputASBD: AudioStreamBasicDescription,
+            outputASBD: AudioStreamBasicDescription,
+            data: Data,
+            frameCount: Int
+        ) throws -> (Data, packetSizes: [Int]?) {
+            try data.withUnsafeBytes { rawInput in
+                guard let baseAddress = rawInput.baseAddress
+                else {
+                    return (Data(), packetSizes: nil)
+                }
+
+                var context = EncoderInputContext(
+                    buffer: baseAddress,
+                    byteSize: UInt32(rawInput.count),
+                    packetCount: UInt32(frameCount),
+                    bytesPerPacket: inputASBD.mBytesPerPacket,
+                    consumed: false
+                )
+
+                return try fillOutputBuffer(
+                    converter: converter,
+                    outputASBD: outputASBD,
+                    frameCount: frameCount,
+                    inputBufferSize: rawInput.count,
+                    context: &context
+                )
+            }
+        }
+
+        /// Direct encode without accumulation — for codecs that have no
+        /// fixed frame size (e.g. Linear PCM).
+        private func encodeDirect(
             converter: AudioConverterRef,
             inputASBD: AudioStreamBasicDescription,
             outputASBD: AudioStreamBasicDescription,
             data: Data
         ) throws -> (Data, packetSizes: [Int]?) {
             let bytesPerFrame = Int(inputASBD.mBytesPerFrame)
-            guard bytesPerFrame > 0 else {
-                throw CaptureError.encodingFailed(
-                    codec: "audio",
-                    reason: "Invalid input format"
-                )
-            }
             let frameCount = data.count / bytesPerFrame
 
             return try data.withUnsafeBytes { rawInput in
@@ -282,8 +384,9 @@
             }
 
             // Status 1 = our "input exhausted" sentinel (normal).
-            // Status -10877 = not enough input data yet for the first
-            // few calls with VBR codecs (AAC, Opus). Return empty data.
+            // Status -10877 = not enough input data for a complete
+            // codec frame. With the PCM accumulator this should only
+            // happen on the very first call while the converter primes.
             if status == -10877 {
                 return (Data(), packetSizes: nil)
             }

@@ -174,6 +174,7 @@ public actor StreamingPipeline {
         let task = Task { @concurrent [weak self] in
             var localBytes: Int64 = 0
             var localCount: Int64 = 0
+            var _diagTotal: Int64 = 0
             for await buffer in audioStream {
                 guard !Task.isCancelled else { break }
                 do {
@@ -185,6 +186,10 @@ public actor StreamingPipeline {
                     try await transport.send(packet)
                     localBytes += Int64(encoded.data.count)
                     localCount += 1
+                    _diagTotal += 1
+                    if _diagTotal % 50 == 0 {
+                        print("[DIAG-Pipeline] AudioOnly #\(_diagTotal) pipelineTs=\(String(format: "%.3f", ts))")
+                    }
                     if localCount % 30 == 0 {
                         await self?.flushAudioStats(
                             bytes: localBytes, count: localCount)
@@ -193,12 +198,14 @@ public actor StreamingPipeline {
                     }
                 } catch {
                     if Task.isCancelled { break }
+                    print("[DIAG-Pipeline] AudioOnly send error: \(error)")
                 }
             }
             if localCount > 0 {
                 await self?.flushAudioStats(
                     bytes: localBytes, count: localCount)
             }
+            print("[DIAG-Pipeline] AudioOnly producer loop EXITED, total=\(_diagTotal)")
         }
         producerTasks.append(task)
     }
@@ -239,6 +246,7 @@ public actor StreamingPipeline {
                     }
                 } catch {
                     if Task.isCancelled { break }
+                    print("[DIAG-Pipeline] VideoOnly send error: \(error)")
                 }
             }
             if localCount > 0 {
@@ -265,6 +273,7 @@ public actor StreamingPipeline {
         // start together (avoids audio burst before camera warm-up).
         let audioStream = try await audioSource.startCapture()
         let audioTask = Task { @concurrent [weak self] in
+            var _diagCount: Int64 = 0
             for await buffer in audioStream {
                 guard !Task.isCancelled else { break }
                 // Drop audio until first video frame arrives.
@@ -274,10 +283,16 @@ public actor StreamingPipeline {
                     guard !encoded.data.isEmpty else { continue }
                     let ts = await self?.pipelineTimestamp ?? 0
                     continuation.yield(.audio(encoded.withTimestamp(ts)))
+                    _diagCount += 1
+                    if _diagCount % 50 == 0 {
+                        print("[DIAG-Pipeline] MuxAudio #\(_diagCount) pipelineTs=\(String(format: "%.3f", ts))")
+                    }
                 } catch {
                     if Task.isCancelled { break }
+                    print("[DIAG-Pipeline] MuxAudio encode error: \(error)")
                 }
             }
+            print("[DIAG-Pipeline] MuxAudio producer loop EXITED, total=\(_diagCount)")
             await self?.producerDidFinish()
         }
         producerTasks.append(audioTask)
@@ -304,8 +319,10 @@ public actor StreamingPipeline {
                     continuation.yield(.video(encoded.withTimestamp(ts)))
                 } catch {
                     if Task.isCancelled { break }
+                    print("[DIAG-Pipeline] MuxVideo encode error: \(error)")
                 }
             }
+            print("[DIAG-Pipeline] MuxVideo producer loop EXITED")
             await self?.producerDidFinish()
         }
         producerTasks.append(videoTask)
@@ -319,6 +336,8 @@ public actor StreamingPipeline {
             var localVideoBytes: Int64 = 0
             var localVideoCount: Int64 = 0
             var totalCount: Int64 = 0
+            var totalAudio: Int64 = 0
+            var totalVideo: Int64 = 0
             for await packet in muxStream {
                 guard !Task.isCancelled else { break }
                 do {
@@ -327,11 +346,17 @@ public actor StreamingPipeline {
                     case .video(let frame):
                         localVideoBytes += Int64(frame.data.count)
                         localVideoCount += 1
+                        totalVideo += 1
                     case .audio(let buffer):
                         localAudioBytes += Int64(buffer.data.count)
                         localAudioCount += 1
+                        totalAudio += 1
                     }
                     totalCount += 1
+                    if totalCount % 50 == 0 {
+                        let ts = packet.timestamp
+                        print("[DIAG-MuxConsumer] #\(totalCount) A=\(totalAudio) V=\(totalVideo) ts=\(String(format: "%.3f", ts))")
+                    }
                     if totalCount % 30 == 0 {
                         await self?.flushMuxStats(
                             audioBytes: localAudioBytes,
@@ -345,8 +370,10 @@ public actor StreamingPipeline {
                     }
                 } catch {
                     if Task.isCancelled { break }
+                    print("[DIAG-MuxConsumer] send error: \(error)")
                 }
             }
+            print("[DIAG-MuxConsumer] consumer loop EXITED, totalA=\(totalAudio) totalV=\(totalVideo)")
             if localAudioCount > 0 || localVideoCount > 0 {
                 await self?.flushMuxStats(
                     audioBytes: localAudioBytes,
