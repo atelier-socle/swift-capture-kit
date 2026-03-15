@@ -383,6 +383,26 @@
                 )
             }
 
+            return try collectEncoderOutput(
+                outputBuffer: outputPtr,
+                outputBufferList: &outputBufferList,
+                outputPacketCount: outputPacketCount,
+                packetDescs: packetDescs,
+                status: status
+            )
+        }
+
+        /// Validates the converter status and assembles the encoded
+        /// output data together with optional per-packet sizes.
+        private func collectEncoderOutput(
+            outputBuffer: UnsafeMutablePointer<UInt8>,
+            outputBufferList: inout AudioToolbox.AudioBufferList,
+            outputPacketCount: UInt32,
+            packetDescs: UnsafeMutablePointer<
+                AudioStreamPacketDescription
+            >?,
+            status: OSStatus
+        ) throws -> (Data, packetSizes: [Int]?) {
             // Status 1 = our "input exhausted" sentinel (normal).
             // Status -10877 = not enough input data for a complete
             // codec frame. With the PCM accumulator this should only
@@ -400,7 +420,8 @@
 
             let produced = Int(
                 outputBufferList.mBuffers.mDataByteSize)
-            let outputData = Data(bytes: outputPtr, count: produced)
+            let outputData = Data(
+                bytes: outputBuffer, count: produced)
 
             // Extract per-packet sizes from packet descriptions.
             var sizes: [Int]?

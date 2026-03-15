@@ -135,14 +135,7 @@ public actor ToneSource: AudioSource {
         let amplitude = self.amplitude
 
         let meter = audioMeter
-        let levelContinuation = _audioLevelContinuation
-        let meterLevels = await meter.levels
-
-        let forwardTask = Task {
-            for await level in meterLevels {
-                levelContinuation.yield(level)
-            }
-        }
+        let forwardTask = await startMeterForwarding(meter: meter)
 
         return AsyncStream { continuation in
             let task = Task { @concurrent in
@@ -201,6 +194,16 @@ public actor ToneSource: AudioSource {
     /// An async stream of real-time audio level samples.
     public nonisolated var audioLevel: AsyncStream<AudioLevelSample> {
         _audioLevelStream
+    }
+
+    private func startMeterForwarding(meter: AudioMeter) async -> Task<Void, Never> {
+        let levelContinuation = _audioLevelContinuation
+        let meterLevels = await meter.levels
+        return Task {
+            for await level in meterLevels {
+                levelContinuation.yield(level)
+            }
+        }
     }
 
     private func makeFormat(from config: AudioSourceConfiguration) -> AudioFormat {

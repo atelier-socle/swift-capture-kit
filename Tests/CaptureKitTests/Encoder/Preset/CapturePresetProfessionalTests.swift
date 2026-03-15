@@ -2,6 +2,7 @@
 // Copyright 2026 Atelier Socle SAS
 
 import Testing
+
 @testable import CaptureKit
 
 @Suite("CapturePreset Professional Factory Methods")

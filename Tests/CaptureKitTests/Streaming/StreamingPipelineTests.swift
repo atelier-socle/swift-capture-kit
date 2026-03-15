@@ -43,8 +43,9 @@ struct StreamingPipelineTests {
     ) -> (PipelineTestAudioSource, [CaptureKit.AudioBuffer]) {
         var buffers: [CaptureKit.AudioBuffer] = []
         for i in 0..<bufferCount {
-            buffers.append(makeAudioBuffer(
-                timestamp: Double(i) * 0.02, seq: Int64(i)))
+            buffers.append(
+                makeAudioBuffer(
+                    timestamp: Double(i) * 0.02, seq: Int64(i)))
         }
         return (PipelineTestAudioSource(buffers: buffers), buffers)
     }
@@ -55,10 +56,11 @@ struct StreamingPipelineTests {
     ) -> (PipelineTestVideoSource, [VideoFrame]) {
         var frames: [VideoFrame] = []
         for i in 0..<frameCount {
-            frames.append(makeVideoFrame(
-                timestamp: Double(i) / 30.0,
-                isKeyFrame: i == 0,
-                seq: Int64(i)))
+            frames.append(
+                makeVideoFrame(
+                    timestamp: Double(i) / 30.0,
+                    isKeyFrame: i == 0,
+                    seq: Int64(i)))
         }
         return (PipelineTestVideoSource(frames: frames), frames)
     }

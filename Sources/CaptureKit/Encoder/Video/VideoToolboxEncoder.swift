@@ -51,7 +51,8 @@
         // absent or false → keyframe (IDR), true → P/B-frame.
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(
             sampleBuffer, createIfNecessary: false) as? [[CFString: Any]],
-           let first = attachments.first {
+            let first = attachments.first
+        {
             let dependsOnOthers = first[kCMSampleAttachmentKey_DependsOnOthers] as? Bool ?? false
             buffer.isKeyFrame = !dependsOnOthers
         } else {

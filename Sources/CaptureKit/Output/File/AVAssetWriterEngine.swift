@@ -41,56 +41,12 @@ actor AVAssetWriterEngine: FileWriterProviding {
         let assetWriter = try AVAssetWriter(
             outputURL: url, fileType: fileType)
 
-        var pendingAudioInput: AVAssetWriterInput?
-        var pendingVideoInput: AVAssetWriterInput?
-        var pendingAdaptor: AVAssetWriterInputPixelBufferAdaptor?
-
-        if let audioFormat {
-            let settings = audioOutputSettings(for: audioFormat)
-            // Pass-through mode (settings == nil) requires a valid
-            // sourceFormatHint so AVAssetWriter can determine the format.
-            let formatHint: CMAudioFormatDescription? =
-                if settings == nil {
-                    buildAudioFormatDescription(for: audioFormat)
-                } else {
-                    nil
-                }
-            let input = AVAssetWriterInput(
-                mediaType: .audio,
-                outputSettings: settings,
-                sourceFormatHint: formatHint)
-            input.expectsMediaDataInRealTime = true
-            if assetWriter.canAdd(input) {
-                assetWriter.add(input)
-                pendingAudioInput = input
-            }
+        let pendingAudioInput = audioFormat.flatMap {
+            makeAudioInput(for: $0, writer: assetWriter)
         }
 
-        if let videoFormat {
-            let settings = videoOutputSettings(for: videoFormat)
-            let input = AVAssetWriterInput(
-                mediaType: .video, outputSettings: settings)
-            input.expectsMediaDataInRealTime = true
-            if assetWriter.canAdd(input) {
-                assetWriter.add(input)
-                pendingVideoInput = input
-                self.videoWidth = videoFormat.resolution.width
-                self.videoHeight = videoFormat.resolution.height
-
-                let sourceAttrs: [String: Any] = [
-                    kCVPixelBufferPixelFormatTypeKey as String:
-                        Int(kCVPixelFormatType_32BGRA),
-                    kCVPixelBufferWidthKey as String:
-                        videoFormat.resolution.width,
-                    kCVPixelBufferHeightKey as String:
-                        videoFormat.resolution.height
-                ]
-                pendingAdaptor =
-                    AVAssetWriterInputPixelBufferAdaptor(
-                        assetWriterInput: input,
-                        sourcePixelBufferAttributes: sourceAttrs)
-            }
-        }
+        let (pendingVideoInput, pendingAdaptor) = makeVideoInput(
+            for: videoFormat, writer: assetWriter)
 
         let started = assetWriter.startWriting()
         guard started else {
@@ -122,7 +78,7 @@ actor AVAssetWriterEngine: FileWriterProviding {
 
         let cmTime = CMTime(
             seconds: timestamp, preferredTimescale: 48_000)
-        if let sampleBuffer = createAudioSampleBuffer(
+        if let sampleBuffer = Self.createAudioSampleBuffer(
             data: data, timestamp: cmTime, duration: duration,
             formatDescription: formatDesc)
         {
@@ -150,7 +106,7 @@ actor AVAssetWriterEngine: FileWriterProviding {
             seconds: timestamp, preferredTimescale: 90_000)
 
         guard
-            let pixelBuffer = createPixelBuffer(
+            let pixelBuffer = Self.createPixelBuffer(
                 from: data, width: width, height: height,
                 adaptor: adaptor)
         else { return }
@@ -206,7 +162,241 @@ actor AVAssetWriterEngine: FileWriterProviding {
         ]
     }
 
-    private func createAudioSampleBuffer(
+    private func makeAudioInput(
+        for audioFormat: AudioFormat,
+        writer assetWriter: AVAssetWriter
+    ) -> AVAssetWriterInput? {
+        let settings = audioOutputSettings(for: audioFormat)
+        // Pass-through mode (settings == nil) requires a valid
+        // sourceFormatHint so AVAssetWriter can determine the format.
+        let formatHint: CMAudioFormatDescription? =
+            if settings == nil {
+                buildAudioFormatDescription(for: audioFormat)
+            } else {
+                nil
+            }
+        let input = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: settings,
+            sourceFormatHint: formatHint)
+        input.expectsMediaDataInRealTime = true
+        guard assetWriter.canAdd(input) else { return nil }
+        assetWriter.add(input)
+        return input
+    }
+
+    private func makeVideoInput(
+        for videoFormat: VideoFormat?,
+        writer assetWriter: AVAssetWriter
+    ) -> (AVAssetWriterInput?, AVAssetWriterInputPixelBufferAdaptor?) {
+        guard let videoFormat else { return (nil, nil) }
+        let settings = videoOutputSettings(for: videoFormat)
+        let input = AVAssetWriterInput(
+            mediaType: .video, outputSettings: settings)
+        input.expectsMediaDataInRealTime = true
+        guard assetWriter.canAdd(input) else { return (nil, nil) }
+        assetWriter.add(input)
+        self.videoWidth = videoFormat.resolution.width
+        self.videoHeight = videoFormat.resolution.height
+
+        let sourceAttrs: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String:
+                Int(kCVPixelFormatType_32BGRA),
+            kCVPixelBufferWidthKey as String:
+                videoFormat.resolution.width,
+            kCVPixelBufferHeightKey as String:
+                videoFormat.resolution.height
+        ]
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: input,
+            sourcePixelBufferAttributes: sourceAttrs)
+        return (input, adaptor)
+    }
+
+    /// Builds a CMAudioFormatDescription eagerly from an AudioFormat.
+    /// Used in `prepare()` to provide `sourceFormatHint` for pass-through.
+    private func buildAudioFormatDescription(
+        for format: AudioFormat
+    ) -> CMAudioFormatDescription? {
+        #if canImport(AudioToolbox)
+            let sampleRate = format.sampleRate.rawValue
+            let channels = UInt32(format.channelCount)
+
+            // Default to AAC-LC for pass-through — the primary use case.
+            var asbd = Self.makeOutputASBD(
+                formatID: kAudioFormatMPEG4AAC,
+                sampleRate: sampleRate,
+                channels: channels
+            )
+
+            let cookie = Self.aacMagicCookie(
+                sampleRate: sampleRate, channels: channels)
+
+            var desc: CMAudioFormatDescription?
+            let result = cookie.withUnsafeBytes { ptr in
+                CMAudioFormatDescriptionCreate(
+                    allocator: kCFAllocatorDefault,
+                    asbd: &asbd,
+                    layoutSize: 0,
+                    layout: nil,
+                    magicCookieSize: cookie.count,
+                    magicCookie: ptr.baseAddress,
+                    extensions: nil,
+                    formatDescriptionOut: &desc
+                )
+            }
+            if result == noErr {
+                audioFormatDescription = desc
+            }
+            return desc
+        #else
+            return nil
+        #endif
+    }
+
+    /// Creates or returns a cached CMAudioFormatDescription for the codec.
+    private func getOrCreateAudioFormatDescription(
+        codec: AudioCodec
+    ) -> CMAudioFormatDescription? {
+        if let existing = audioFormatDescription { return existing }
+
+        #if canImport(AudioToolbox)
+            let formatID: AudioFormatID =
+                switch codec {
+                case .aac: kAudioFormatMPEG4AAC
+                case .alac: kAudioFormatAppleLossless
+                case .opus: kAudioFormatOpus
+                case .flac: kAudioFormatFLAC
+                case .pcm: kAudioFormatLinearPCM
+                case .mp3: kAudioFormatMPEGLayer3
+                }
+
+            let sampleRate =
+                storedAudioFormat?.sampleRate.rawValue ?? 48000.0
+            let channels = UInt32(
+                storedAudioFormat?.channelCount ?? 1)
+
+            var asbd = Self.makeOutputASBD(
+                formatID: formatID,
+                sampleRate: sampleRate,
+                channels: channels
+            )
+
+            let desc = Self.createFormatDescription(
+                asbd: &asbd, formatID: formatID,
+                sampleRate: sampleRate, channels: channels)
+            if desc != nil {
+                audioFormatDescription = desc
+            }
+            return desc
+        #else
+            return nil
+        #endif
+    }
+}
+
+// MARK: - Static Helpers
+
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+extension AVAssetWriterEngine {
+    #if canImport(AudioToolbox)
+        fileprivate static func makeOutputASBD(
+            formatID: AudioFormatID,
+            sampleRate: Double,
+            channels: UInt32
+        ) -> AudioStreamBasicDescription {
+            AudioStreamBasicDescription(
+                mSampleRate: sampleRate,
+                mFormatID: formatID,
+                mFormatFlags: formatID == kAudioFormatLinearPCM
+                    ? (kAudioFormatFlagIsFloat
+                        | kAudioFormatFlagIsPacked) : 0,
+                mBytesPerPacket: formatID == kAudioFormatLinearPCM
+                    ? channels * 4 : 0,
+                mFramesPerPacket: formatID == kAudioFormatMPEG4AAC
+                    ? 1024 : 1,
+                mBytesPerFrame: formatID == kAudioFormatLinearPCM
+                    ? channels * 4 : 0,
+                mChannelsPerFrame: channels,
+                mBitsPerChannel: formatID == kAudioFormatLinearPCM
+                    ? 32 : 0,
+                mReserved: 0
+            )
+        }
+
+        fileprivate static func createFormatDescription(
+            asbd: inout AudioStreamBasicDescription,
+            formatID: AudioFormatID,
+            sampleRate: Double,
+            channels: UInt32
+        ) -> CMAudioFormatDescription? {
+            var desc: CMAudioFormatDescription?
+            let result: OSStatus
+            if formatID == kAudioFormatMPEG4AAC {
+                let cookie = aacMagicCookie(
+                    sampleRate: sampleRate, channels: channels)
+                result = cookie.withUnsafeBytes { ptr in
+                    CMAudioFormatDescriptionCreate(
+                        allocator: kCFAllocatorDefault,
+                        asbd: &asbd,
+                        layoutSize: 0,
+                        layout: nil,
+                        magicCookieSize: cookie.count,
+                        magicCookie: ptr.baseAddress,
+                        extensions: nil,
+                        formatDescriptionOut: &desc
+                    )
+                }
+            } else {
+                result = CMAudioFormatDescriptionCreate(
+                    allocator: kCFAllocatorDefault,
+                    asbd: &asbd,
+                    layoutSize: 0,
+                    layout: nil,
+                    magicCookieSize: 0,
+                    magicCookie: nil,
+                    extensions: nil,
+                    formatDescriptionOut: &desc
+                )
+            }
+            return result == noErr ? desc : nil
+        }
+    #endif
+
+    /// Builds a minimal AAC AudioSpecificConfig (ISO 14496-3).
+    ///
+    /// Layout: audioObjectType(5) + samplingFrequencyIndex(4) +
+    ///         channelConfiguration(4) + frameLengthFlag(1) +
+    ///         dependsOnCoreCoder(1) + extensionFlag(1) = 16 bits.
+    fileprivate static func aacMagicCookie(
+        sampleRate: Double, channels: UInt32
+    ) -> Data {
+        let freqIndex = Self.aacFrequencyIndex(
+            for: Int(sampleRate))
+
+        let objectType: UInt8 = 2  // AAC-LC
+        let channelConfig = UInt8(min(channels, 7))
+
+        // Pack into 2 bytes:
+        // byte1 = objectType(5 bits) | freqIndex(top 3 of 4 bits)
+        // byte2 = freqIndex(bottom 1 bit) | channelConfig(4) | padding(3)
+        let byte1 = (objectType << 3) | (freqIndex >> 1)
+        let byte2 = (freqIndex << 7) | (channelConfig << 3)
+        return Data([byte1, byte2])
+    }
+
+    fileprivate static let aacFrequencyTable: [Int: UInt8] = [
+        96_000: 0, 88_200: 1, 64_000: 2, 48_000: 3,
+        44_100: 4, 32_000: 5, 24_000: 6, 22_050: 7,
+        16_000: 8, 12_000: 9, 11_025: 10, 8_000: 11,
+        7_350: 12
+    ]
+
+    fileprivate static func aacFrequencyIndex(for sampleRateHz: Int) -> UInt8 {
+        aacFrequencyTable[sampleRateHz] ?? 4  // fallback to 44100
+    }
+
+    fileprivate static func createAudioSampleBuffer(
         data: Data,
         timestamp: CMTime,
         duration: TimeInterval,
@@ -266,167 +456,7 @@ actor AVAssetWriterEngine: FileWriterProviding {
         return sampleBuffer
     }
 
-    /// Builds a CMAudioFormatDescription eagerly from an AudioFormat.
-    /// Used in `prepare()` to provide `sourceFormatHint` for pass-through.
-    private func buildAudioFormatDescription(
-        for format: AudioFormat
-    ) -> CMAudioFormatDescription? {
-        #if canImport(AudioToolbox)
-            let sampleRate = format.sampleRate.rawValue
-            let channels = UInt32(format.channelCount)
-
-            // Default to AAC-LC for pass-through — the primary use case.
-            var asbd = AudioStreamBasicDescription(
-                mSampleRate: sampleRate,
-                mFormatID: kAudioFormatMPEG4AAC,
-                mFormatFlags: 0,
-                mBytesPerPacket: 0,
-                mFramesPerPacket: 1024,
-                mBytesPerFrame: 0,
-                mChannelsPerFrame: channels,
-                mBitsPerChannel: 0,
-                mReserved: 0
-            )
-
-            let cookie = Self.aacMagicCookie(
-                sampleRate: sampleRate, channels: channels)
-
-            var desc: CMAudioFormatDescription?
-            let result = cookie.withUnsafeBytes { ptr in
-                CMAudioFormatDescriptionCreate(
-                    allocator: kCFAllocatorDefault,
-                    asbd: &asbd,
-                    layoutSize: 0,
-                    layout: nil,
-                    magicCookieSize: cookie.count,
-                    magicCookie: ptr.baseAddress,
-                    extensions: nil,
-                    formatDescriptionOut: &desc
-                )
-            }
-            if result == noErr {
-                audioFormatDescription = desc
-            }
-            return desc
-        #else
-            return nil
-        #endif
-    }
-
-    /// Creates or returns a cached CMAudioFormatDescription for the codec.
-    private func getOrCreateAudioFormatDescription(
-        codec: AudioCodec
-    ) -> CMAudioFormatDescription? {
-        if let existing = audioFormatDescription { return existing }
-
-        #if canImport(AudioToolbox)
-            let formatID: AudioFormatID = switch codec {
-            case .aac: kAudioFormatMPEG4AAC
-            case .alac: kAudioFormatAppleLossless
-            case .opus: kAudioFormatOpus
-            case .flac: kAudioFormatFLAC
-            case .pcm: kAudioFormatLinearPCM
-            case .mp3: kAudioFormatMPEGLayer3
-            }
-
-            let sampleRate =
-                storedAudioFormat?.sampleRate.rawValue ?? 48000.0
-            let channels = UInt32(
-                storedAudioFormat?.channelCount ?? 1)
-
-            var asbd = AudioStreamBasicDescription(
-                mSampleRate: sampleRate,
-                mFormatID: formatID,
-                mFormatFlags: formatID == kAudioFormatLinearPCM
-                    ? (kAudioFormatFlagIsFloat
-                        | kAudioFormatFlagIsPacked) : 0,
-                mBytesPerPacket: formatID == kAudioFormatLinearPCM
-                    ? channels * 4 : 0,
-                mFramesPerPacket: formatID == kAudioFormatMPEG4AAC
-                    ? 1024 : 1,
-                mBytesPerFrame: formatID == kAudioFormatLinearPCM
-                    ? channels * 4 : 0,
-                mChannelsPerFrame: channels,
-                mBitsPerChannel: formatID == kAudioFormatLinearPCM
-                    ? 32 : 0,
-                mReserved: 0
-            )
-
-            var desc: CMAudioFormatDescription?
-            let result: OSStatus
-            if formatID == kAudioFormatMPEG4AAC {
-                let cookie = Self.aacMagicCookie(
-                    sampleRate: sampleRate, channels: channels)
-                result = cookie.withUnsafeBytes { ptr in
-                    CMAudioFormatDescriptionCreate(
-                        allocator: kCFAllocatorDefault,
-                        asbd: &asbd,
-                        layoutSize: 0,
-                        layout: nil,
-                        magicCookieSize: cookie.count,
-                        magicCookie: ptr.baseAddress,
-                        extensions: nil,
-                        formatDescriptionOut: &desc
-                    )
-                }
-            } else {
-                result = CMAudioFormatDescriptionCreate(
-                    allocator: kCFAllocatorDefault,
-                    asbd: &asbd,
-                    layoutSize: 0,
-                    layout: nil,
-                    magicCookieSize: 0,
-                    magicCookie: nil,
-                    extensions: nil,
-                    formatDescriptionOut: &desc
-                )
-            }
-            if result == noErr {
-                audioFormatDescription = desc
-            }
-            return desc
-        #else
-            return nil
-        #endif
-    }
-
-    /// Builds a minimal AAC AudioSpecificConfig (ISO 14496-3).
-    ///
-    /// Layout: audioObjectType(5) + samplingFrequencyIndex(4) +
-    ///         channelConfiguration(4) + frameLengthFlag(1) +
-    ///         dependsOnCoreCoder(1) + extensionFlag(1) = 16 bits.
-    private static func aacMagicCookie(
-        sampleRate: Double, channels: UInt32
-    ) -> Data {
-        let freqIndex: UInt8 = switch Int(sampleRate) {
-        case 96_000: 0
-        case 88_200: 1
-        case 64_000: 2
-        case 48_000: 3
-        case 44_100: 4
-        case 32_000: 5
-        case 24_000: 6
-        case 22_050: 7
-        case 16_000: 8
-        case 12_000: 9
-        case 11_025: 10
-        case 8_000: 11
-        case 7_350: 12
-        default: 4  // fallback to 44100
-        }
-
-        let objectType: UInt8 = 2  // AAC-LC
-        let channelConfig = UInt8(min(channels, 7))
-
-        // Pack into 2 bytes:
-        // byte1 = objectType(5 bits) | freqIndex(top 3 of 4 bits)
-        // byte2 = freqIndex(bottom 1 bit) | channelConfig(4) | padding(3)
-        let byte1 = (objectType << 3) | (freqIndex >> 1)
-        let byte2 = (freqIndex << 7) | (channelConfig << 3)
-        return Data([byte1, byte2])
-    }
-
-    private func createPixelBuffer(
+    fileprivate static func createPixelBuffer(
         from data: Data,
         width: Int,
         height: Int,

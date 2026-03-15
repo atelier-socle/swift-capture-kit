@@ -21,7 +21,8 @@ import Foundation
 ///
 /// All packets (audio and video) are timestamped using a shared monotonic
 /// wall clock (`ContinuousClock`) so both tracks share a single timeline
-/// starting at zero.
+/// starting at zero. The epoch is captured lazily when the first packet is
+/// produced, so gated audio in muxed mode starts at t≈0.
 public actor StreamingPipeline {
 
     // MARK: - Mode
@@ -62,9 +63,10 @@ public actor StreamingPipeline {
     private var muxContinuation: AsyncStream<MediaPacket>.Continuation?
     private var startTime: Date?
 
-    // Monotonic epoch captured at start(). All packet timestamps are
-    // relative to this instant so every track (audio + video) shares
-    // the same clock regardless of its source time base.
+    // Monotonic epoch captured lazily on the first call to
+    // pipelineTimestamp. This ensures gated audio in muxed mode
+    // starts at t≈0 instead of accumulating dead time while
+    // waiting for the first video frame.
     private var pipelineEpoch: ContinuousClock.Instant?
 
     // Tracks how many producers are still active so the mux continuation
@@ -126,7 +128,7 @@ public actor StreamingPipeline {
         try await transport.connect()
         state = .streaming
         startTime = Date()
-        pipelineEpoch = .now
+        pipelineEpoch = nil
         firstVideoReceived = false
 
         switch mode {
@@ -136,8 +138,9 @@ public actor StreamingPipeline {
         case .videoOnly(let source, let encoder):
             try await startVideoOnly(source: source, encoder: encoder)
 
-        case .muxed(let videoSource, let videoEncoder,
-                     let audioSource, let audioEncoder):
+        case .muxed(
+            let videoSource, let videoEncoder,
+            let audioSource, let audioEncoder):
             try await startMuxed(
                 videoSource: videoSource, videoEncoder: videoEncoder,
                 audioSource: audioSource, audioEncoder: audioEncoder
@@ -183,7 +186,7 @@ public actor StreamingPipeline {
                 do {
                     let encoded = try await encoder.encode(buffer)
                     guard !encoded.data.isEmpty else { continue }
-                    let ts = await self?.pipelineTimestamp ?? 0
+                    let ts = await self?.ensureEpochAndTimestamp() ?? 0
                     let packet = MediaPacket.audio(encoded)
                         .withTimestamp(ts)
                     try await transport.send(packet)
@@ -216,7 +219,6 @@ public actor StreamingPipeline {
         let videoStream = try await source.startCapture()
         let transport = self.transport
 
-        // Send video configuration after first keyframe
         let task = Task { @concurrent [weak self] in
             var sentConfig = false
             var localBytes: Int64 = 0
@@ -229,7 +231,7 @@ public actor StreamingPipeline {
                         await self?.sendVideoConfiguration(encoder: encoder)
                         sentConfig = true
                     }
-                    let ts = await self?.pipelineTimestamp ?? 0
+                    let ts = await self?.ensureEpochAndTimestamp() ?? 0
                     let packet = MediaPacket.video(encoded)
                         .withTimestamp(ts)
                     try await transport.send(packet)
@@ -265,18 +267,34 @@ public actor StreamingPipeline {
         muxContinuation = continuation
         activeProducerCount = 2
 
-        // Audio producer — gates on firstVideoReceived so both tracks
-        // start together (avoids audio burst before camera warm-up).
         let audioStream = try await audioSource.startCapture()
-        let audioTask = Task { @concurrent [weak self] in
+        producerTasks.append(
+            startMuxedAudioProducer(
+                audioStream: audioStream, encoder: audioEncoder,
+                continuation: continuation))
+
+        let videoStream = try await videoSource.startCapture()
+        producerTasks.append(
+            startMuxedVideoProducer(
+                videoStream: videoStream, encoder: videoEncoder,
+                continuation: continuation))
+
+        startMuxedConsumer(muxStream: muxStream)
+    }
+
+    private func startMuxedAudioProducer(
+        audioStream: AsyncStream<AudioBuffer>,
+        encoder: any AudioEncoderProtocol,
+        continuation: AsyncStream<MediaPacket>.Continuation
+    ) -> Task<Void, Never> {
+        Task { @concurrent [weak self] in
             for await buffer in audioStream {
                 guard !Task.isCancelled else { break }
-                // Drop audio until first video frame arrives.
                 guard await self?.firstVideoReceived == true else { continue }
                 do {
-                    let encoded = try await audioEncoder.encode(buffer)
+                    let encoded = try await encoder.encode(buffer)
                     guard !encoded.data.isEmpty else { continue }
-                    let ts = await self?.pipelineTimestamp ?? 0
+                    let ts = await self?.ensureEpochAndTimestamp() ?? 0
                     continuation.yield(.audio(encoded.withTimestamp(ts)))
                 } catch {
                     if Task.isCancelled { break }
@@ -284,27 +302,27 @@ public actor StreamingPipeline {
             }
             await self?.producerDidFinish()
         }
-        producerTasks.append(audioTask)
+    }
 
-        // Video producer — waits for first keyframe to extract parameter sets.
-        // Also gates audio: sets firstVideoReceived so audio can start flowing.
-        let videoStream = try await videoSource.startCapture()
-        let videoTask = Task { @concurrent [weak self] in
+    private func startMuxedVideoProducer(
+        videoStream: AsyncStream<VideoFrame>,
+        encoder: any VideoEncoderProtocol,
+        continuation: AsyncStream<MediaPacket>.Continuation
+    ) -> Task<Void, Never> {
+        Task { @concurrent [weak self] in
             var sentConfig = false
             for await frame in videoStream {
                 guard !Task.isCancelled else { break }
                 do {
-                    let encoded = try await videoEncoder.encode(frame)
+                    let encoded = try await encoder.encode(frame)
                     if !sentConfig && encoded.isKeyFrame {
-                        await self?.sendVideoConfiguration(
-                            encoder: videoEncoder)
+                        await self?.sendVideoConfiguration(encoder: encoder)
                         sentConfig = true
                     }
-                    // Signal audio producer that video has started.
                     if await self?.firstVideoReceived == false {
                         await self?.setFirstVideoReceived()
                     }
-                    let ts = await self?.pipelineTimestamp ?? 0
+                    let ts = await self?.ensureEpochAndTimestamp() ?? 0
                     continuation.yield(.video(encoded.withTimestamp(ts)))
                 } catch {
                     if Task.isCancelled { break }
@@ -312,10 +330,11 @@ public actor StreamingPipeline {
             }
             await self?.producerDidFinish()
         }
-        producerTasks.append(videoTask)
+    }
 
-        // Consumer loop — single sequential path to transport.
-        // Transport is captured locally to avoid actor hops on every packet.
+    private func startMuxedConsumer(
+        muxStream: AsyncStream<MediaPacket>
+    ) {
         let transport = self.transport
         consumerTask = Task { @concurrent [weak self] in
             var localAudioBytes: Int64 = 0
@@ -361,6 +380,12 @@ public actor StreamingPipeline {
         }
     }
 
+}
+
+// MARK: - Internal Helpers
+
+extension StreamingPipeline {
+
     /// Called by each mux producer when it finishes. Finishes the
     /// continuation only after ALL producers are done so the consumer
     /// loop processes every packet.
@@ -372,20 +397,18 @@ public actor StreamingPipeline {
         }
     }
 
-    // MARK: - Video Configuration Extraction
-
     private func sendVideoConfiguration(
         encoder: any VideoEncoderProtocol
     ) async {
         do {
             if let h264 = encoder as? H264Encoder,
-               let params = await h264.parameterSets
+                let params = await h264.parameterSets
             {
                 let configData = params.sps + params.pps
                 try await transport.sendConfiguration(
                     .video(codec: .h264, parameterSets: configData))
             } else if let hevc = encoder as? HEVCEncoder,
-                      let params = await hevc.parameterSets
+                let params = await hevc.parameterSets
             {
                 let configData = params.vps + params.sps + params.pps
                 try await transport.sendConfiguration(
@@ -397,33 +420,23 @@ public actor StreamingPipeline {
         }
     }
 
-    // MARK: - Internal Helpers
-
     private func setFirstVideoReceived() {
         firstVideoReceived = true
     }
 
-    private var isStreaming: Bool {
-        state == .streaming
-    }
-
-    /// Seconds elapsed since ``pipelineEpoch`` — used to restamp packets
-    /// onto a single monotonic timeline shared by audio and video.
-    private var pipelineTimestamp: TimeInterval {
-        guard let epoch = pipelineEpoch else { return 0 }
+    /// Lazily captures the pipeline epoch on first call, then returns
+    /// the elapsed time. This ensures gated tracks start at t≈0.
+    func ensureEpochAndTimestamp() -> TimeInterval {
+        let epoch =
+            pipelineEpoch
+            ?? {
+                let now = ContinuousClock.Instant.now
+                pipelineEpoch = now
+                return now
+            }()
         let elapsed = ContinuousClock.now - epoch
         return Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) * 1e-18
-    }
-
-    private func recordVideoSent(dataSize: Int) {
-        _bytesSent += Int64(dataSize)
-        _videoFrameCount += 1
-    }
-
-    private func recordAudioSent(dataSize: Int) {
-        _bytesSent += Int64(dataSize)
-        _audioBufferCount += 1
     }
 
     private func flushAudioStats(bytes: Int64, count: Int64) {

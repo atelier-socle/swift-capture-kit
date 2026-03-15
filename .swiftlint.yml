@@ -4,6 +4,7 @@
 # Paths to exclude
 excluded:
   - .build
+  - build
   - Tests/Fixtures
 
 # Enabled rules (opt-in)
