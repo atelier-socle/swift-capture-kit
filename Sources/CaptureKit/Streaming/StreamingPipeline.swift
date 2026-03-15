@@ -178,6 +178,7 @@ public actor StreamingPipeline {
                 guard !Task.isCancelled else { break }
                 do {
                     let encoded = try await encoder.encode(buffer)
+                    guard !encoded.data.isEmpty else { continue }
                     let ts = await self?.pipelineTimestamp ?? 0
                     let packet = MediaPacket.audio(encoded)
                         .withTimestamp(ts)
@@ -270,6 +271,7 @@ public actor StreamingPipeline {
                 guard await self?.firstVideoReceived == true else { continue }
                 do {
                     let encoded = try await audioEncoder.encode(buffer)
+                    guard !encoded.data.isEmpty else { continue }
                     let ts = await self?.pipelineTimestamp ?? 0
                     continuation.yield(.audio(encoded.withTimestamp(ts)))
                 } catch {
