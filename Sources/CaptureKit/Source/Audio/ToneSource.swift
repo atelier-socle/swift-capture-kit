@@ -148,7 +148,8 @@ public actor ToneSource: AudioSource {
             let task = Task { @concurrent in
                 var sequenceNumber: Int64 = 0
                 var globalSampleIndex: Int64 = 0
-                let sleepDuration = config.preferredBufferDuration
+                let bufferDuration = config.preferredBufferDuration
+                let startTime = ContinuousClock.now
 
                 while !Task.isCancelled {
                     let data = ToneSource.generateBuffer(
@@ -158,11 +159,12 @@ public actor ToneSource: AudioSource {
                         globalSampleIndex: globalSampleIndex
                     )
 
+                    let timestamp = Double(globalSampleIndex) / sampleRate
                     let buffer = AudioBuffer(
                         data: data,
                         format: format,
-                        timestamp: TimeInterval(sequenceNumber) * sleepDuration,
-                        duration: sleepDuration,
+                        timestamp: timestamp,
+                        duration: bufferDuration,
                         sequenceNumber: sequenceNumber
                     )
                     continuation.yield(buffer)
@@ -170,7 +172,14 @@ public actor ToneSource: AudioSource {
                     sequenceNumber += 1
                     globalSampleIndex += Int64(samplesPerBuffer)
 
-                    try? await Task.sleep(for: .seconds(sleepDuration))
+                    // Sleep until the next buffer is due based on absolute
+                    // time. This prevents cumulative drift from Task.sleep
+                    // jitter and meter processing overhead.
+                    let nextDue = startTime + .seconds(timestamp + bufferDuration)
+                    let now = ContinuousClock.now
+                    if nextDue > now {
+                        try? await Task.sleep(until: nextDue, clock: .continuous)
+                    }
                 }
                 continuation.finish()
                 forwardTask.cancel()
