@@ -18,6 +18,17 @@ import Foundation
 /// parameter sets (SPS/PPS for H.264, VPS/SPS/PPS for HEVC), and sends codec
 /// configuration via `StreamingTransport.sendConfiguration` **before** the
 /// consumer loop begins delivering packets.
+///
+/// ## Timestamping
+///
+/// Video packets use a wall-clock timestamp (`ContinuousClock`) so they
+/// advance at real-time rate regardless of encoder jitter.
+///
+/// Audio packets use the source timestamp from `AVAudioEngine`
+/// (`sampleTime / sampleRate`), rebased to start at zero. This keeps audio
+/// timestamps consistent with the actual sample count even when the async
+/// pipeline introduces scheduling jitter — preventing A/V drift that causes
+/// players (ffplay, VLC) to drop audio after ~50 s.
 public actor StreamingPipeline {
 
     // MARK: - Mode
@@ -58,10 +69,14 @@ public actor StreamingPipeline {
     private var muxContinuation: AsyncStream<MediaPacket>.Continuation?
     private var startTime: Date?
 
-    // Monotonic epoch captured at start(). All packet timestamps are
-    // restamped relative to this instant so every track (audio + video)
-    // shares the same clock regardless of its source time base.
+    // Monotonic epoch captured at start(). Video packet timestamps are
+    // relative to this instant (wall-clock pacing).
     private var pipelineEpoch: ContinuousClock.Instant?
+
+    // First audio source timestamp received after start(). Audio packet
+    // timestamps are rebased relative to this value so they start at zero
+    // while staying true to the audio hardware clock.
+    private var audioEpoch: TimeInterval?
 
     // Tracks how many producers are still active so the mux continuation
     // is only finished once all producers complete.
@@ -123,6 +138,7 @@ public actor StreamingPipeline {
         state = .streaming
         startTime = Date()
         pipelineEpoch = .now
+        audioEpoch = nil
         firstVideoReceived = false
 
         switch mode {
@@ -174,22 +190,18 @@ public actor StreamingPipeline {
         let task = Task { @concurrent [weak self] in
             var localBytes: Int64 = 0
             var localCount: Int64 = 0
-            var _diagTotal: Int64 = 0
             for await buffer in audioStream {
                 guard !Task.isCancelled else { break }
                 do {
                     let encoded = try await encoder.encode(buffer)
                     guard !encoded.data.isEmpty else { continue }
-                    let ts = await self?.pipelineTimestamp ?? 0
+                    let ts = await self?.audioTimestamp(
+                        sourceTimestamp: encoded.timestamp) ?? 0
                     let packet = MediaPacket.audio(encoded)
                         .withTimestamp(ts)
                     try await transport.send(packet)
                     localBytes += Int64(encoded.data.count)
                     localCount += 1
-                    _diagTotal += 1
-                    if _diagTotal % 50 == 0 {
-                        print("[DIAG-Pipeline] AudioOnly #\(_diagTotal) pipelineTs=\(String(format: "%.3f", ts))")
-                    }
                     if localCount % 30 == 0 {
                         await self?.flushAudioStats(
                             bytes: localBytes, count: localCount)
@@ -198,14 +210,12 @@ public actor StreamingPipeline {
                     }
                 } catch {
                     if Task.isCancelled { break }
-                    print("[DIAG-Pipeline] AudioOnly send error: \(error)")
                 }
             }
             if localCount > 0 {
                 await self?.flushAudioStats(
                     bytes: localBytes, count: localCount)
             }
-            print("[DIAG-Pipeline] AudioOnly producer loop EXITED, total=\(_diagTotal)")
         }
         producerTasks.append(task)
     }
@@ -246,7 +256,6 @@ public actor StreamingPipeline {
                     }
                 } catch {
                     if Task.isCancelled { break }
-                    print("[DIAG-Pipeline] VideoOnly send error: \(error)")
                 }
             }
             if localCount > 0 {
@@ -273,7 +282,6 @@ public actor StreamingPipeline {
         // start together (avoids audio burst before camera warm-up).
         let audioStream = try await audioSource.startCapture()
         let audioTask = Task { @concurrent [weak self] in
-            var _diagCount: Int64 = 0
             for await buffer in audioStream {
                 guard !Task.isCancelled else { break }
                 // Drop audio until first video frame arrives.
@@ -281,18 +289,13 @@ public actor StreamingPipeline {
                 do {
                     let encoded = try await audioEncoder.encode(buffer)
                     guard !encoded.data.isEmpty else { continue }
-                    let ts = await self?.pipelineTimestamp ?? 0
+                    let ts = await self?.audioTimestamp(
+                        sourceTimestamp: encoded.timestamp) ?? 0
                     continuation.yield(.audio(encoded.withTimestamp(ts)))
-                    _diagCount += 1
-                    if _diagCount % 50 == 0 {
-                        print("[DIAG-Pipeline] MuxAudio #\(_diagCount) pipelineTs=\(String(format: "%.3f", ts))")
-                    }
                 } catch {
                     if Task.isCancelled { break }
-                    print("[DIAG-Pipeline] MuxAudio encode error: \(error)")
                 }
             }
-            print("[DIAG-Pipeline] MuxAudio producer loop EXITED, total=\(_diagCount)")
             await self?.producerDidFinish()
         }
         producerTasks.append(audioTask)
@@ -319,10 +322,8 @@ public actor StreamingPipeline {
                     continuation.yield(.video(encoded.withTimestamp(ts)))
                 } catch {
                     if Task.isCancelled { break }
-                    print("[DIAG-Pipeline] MuxVideo encode error: \(error)")
                 }
             }
-            print("[DIAG-Pipeline] MuxVideo producer loop EXITED")
             await self?.producerDidFinish()
         }
         producerTasks.append(videoTask)
@@ -336,8 +337,6 @@ public actor StreamingPipeline {
             var localVideoBytes: Int64 = 0
             var localVideoCount: Int64 = 0
             var totalCount: Int64 = 0
-            var totalAudio: Int64 = 0
-            var totalVideo: Int64 = 0
             for await packet in muxStream {
                 guard !Task.isCancelled else { break }
                 do {
@@ -346,17 +345,11 @@ public actor StreamingPipeline {
                     case .video(let frame):
                         localVideoBytes += Int64(frame.data.count)
                         localVideoCount += 1
-                        totalVideo += 1
                     case .audio(let buffer):
                         localAudioBytes += Int64(buffer.data.count)
                         localAudioCount += 1
-                        totalAudio += 1
                     }
                     totalCount += 1
-                    if totalCount % 50 == 0 {
-                        let ts = packet.timestamp
-                        print("[DIAG-MuxConsumer] #\(totalCount) A=\(totalAudio) V=\(totalVideo) ts=\(String(format: "%.3f", ts))")
-                    }
                     if totalCount % 30 == 0 {
                         await self?.flushMuxStats(
                             audioBytes: localAudioBytes,
@@ -370,10 +363,8 @@ public actor StreamingPipeline {
                     }
                 } catch {
                     if Task.isCancelled { break }
-                    print("[DIAG-MuxConsumer] send error: \(error)")
                 }
             }
-            print("[DIAG-MuxConsumer] consumer loop EXITED, totalA=\(totalAudio) totalV=\(totalVideo)")
             if localAudioCount > 0 || localVideoCount > 0 {
                 await self?.flushMuxStats(
                     audioBytes: localAudioBytes,
@@ -430,13 +421,26 @@ public actor StreamingPipeline {
         state == .streaming
     }
 
-    /// Seconds elapsed since ``pipelineEpoch`` — used to restamp packets
-    /// onto a single monotonic timeline.
+    /// Seconds elapsed since ``pipelineEpoch`` — used to restamp video
+    /// packets onto a monotonic wall-clock timeline.
     private var pipelineTimestamp: TimeInterval {
         guard let epoch = pipelineEpoch else { return 0 }
         let elapsed = ContinuousClock.now - epoch
         return Double(elapsed.components.seconds)
             + Double(elapsed.components.attoseconds) * 1e-18
+    }
+
+    /// Rebases an audio source timestamp (from `AVAudioEngine`
+    /// `sampleTime / sampleRate`) so it starts at zero. The first audio
+    /// timestamp received becomes `audioEpoch`; subsequent timestamps are
+    /// expressed relative to it.
+    private func audioTimestamp(
+        sourceTimestamp: TimeInterval
+    ) -> TimeInterval {
+        if audioEpoch == nil {
+            audioEpoch = sourceTimestamp
+        }
+        return max(0, sourceTimestamp - (audioEpoch ?? 0))
     }
 
     private func recordVideoSent(dataSize: Int) {
