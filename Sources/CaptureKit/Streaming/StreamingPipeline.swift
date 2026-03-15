@@ -172,19 +172,10 @@ public actor StreamingPipeline {
         let transport = self.transport
 
         let task = Task { @concurrent [weak self] in
-            print("🔴 [Pipeline] Audio producer starting")
             var localBytes: Int64 = 0
             var localCount: Int64 = 0
             for await buffer in audioStream {
-                print(
-                    "🔊 [Pipeline] Audio buffer received, size: \(buffer.data.count)"
-                )
-                guard !Task.isCancelled else {
-                    print(
-                        "🔴 [Pipeline] Audio producer CANCELLED after \(localCount) buffers"
-                    )
-                    break
-                }
+                guard !Task.isCancelled else { break }
                 do {
                     let encoded = try await encoder.encode(buffer)
                     let ts = await self?.pipelineTimestamp ?? 0
@@ -200,20 +191,9 @@ public actor StreamingPipeline {
                         localCount = 0
                     }
                 } catch {
-                    print(
-                        "🔴 [Pipeline] Audio producer ERROR: \(error)"
-                    )
-                    if Task.isCancelled {
-                        print(
-                            "🔴 [Pipeline] Audio producer CANCELLED in catch after \(localCount) buffers"
-                        )
-                        break
-                    }
+                    if Task.isCancelled { break }
                 }
             }
-            print(
-                "🔴 [Pipeline] Audio producer FOR LOOP ENDED — \(localCount) buffers total, Task.isCancelled=\(Task.isCancelled)"
-            )
             if localCount > 0 {
                 await self?.flushAudioStats(
                     bytes: localBytes, count: localCount)
@@ -350,12 +330,6 @@ public actor StreamingPipeline {
                         localAudioCount += 1
                     }
                     totalCount += 1
-                    // Temporary debug log
-                    if totalCount % 100 == 0 {
-                        print(
-                            "📊 [Pipeline] Mux stats: \(localAudioCount) audio, \(localVideoCount) video packets consumed"
-                        )
-                    }
                     if totalCount % 30 == 0 {
                         await self?.flushMuxStats(
                             audioBytes: localAudioBytes,
