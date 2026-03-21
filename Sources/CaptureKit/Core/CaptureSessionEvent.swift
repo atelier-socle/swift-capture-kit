@@ -25,7 +25,7 @@ public enum PermissionType: String, Sendable, CaseIterable {
 /// Represents a discrete quality level for capture output, ordered from
 /// highest to lowest.
 ///
-/// Conforms to ``Comparable`` so that ``maximum`` is greater than all other
+/// Conforms to `Comparable` so that ``maximum`` is greater than all other
 /// levels and ``minimum`` is less than all other levels.
 public enum CaptureQualityLevel: String, Sendable, CaseIterable, Comparable {
     /// The highest possible capture quality.
