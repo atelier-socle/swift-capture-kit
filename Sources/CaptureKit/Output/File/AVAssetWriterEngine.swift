@@ -41,8 +41,12 @@ actor AVAssetWriterEngine: FileWriterProviding {
         let assetWriter = try AVAssetWriter(
             outputURL: url, fileType: fileType)
 
-        let pendingAudioInput = audioFormat.flatMap {
-            makeAudioInput(for: $0, writer: assetWriter)
+        let pendingAudioInput: AVAssetWriterInput?
+        if let audioFormat {
+            pendingAudioInput = makeAudioInput(
+                for: audioFormat, writer: assetWriter)
+        } else {
+            pendingAudioInput = nil
         }
 
         let (pendingVideoInput, pendingAdaptor) = makeVideoInput(
