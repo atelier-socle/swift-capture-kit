@@ -115,4 +115,68 @@ struct WAVEncoderTests {
         await encoder.reset()
         #expect(await encoder.isConfigured == false)
     }
+
+    // MARK: - Generic configure path
+
+    @Test("generic configure sets isConfigured")
+    func genericConfigure() async throws {
+        guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
+        let encoder = makeEncoder()
+        let config = AudioEncoderConfiguration(
+            bitrate: 0,
+            sampleRate: .rate44100,
+            channelCount: 2
+        )
+        try await encoder.configure(config)
+        #expect(await encoder.isConfigured == true)
+    }
+
+    @Test("encode before configure throws")
+    func encodeBeforeConfigureThrows() async {
+        guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
+        let encoder = makeEncoder()
+        let buffer = makeBuffer()
+        await #expect(throws: CaptureError.self) {
+            try await encoder.encode(buffer)
+        }
+    }
+
+    @Test("flush returns empty when no encode has happened")
+    func flushReturnsEmptyWithoutEncode() async throws {
+        guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
+        let encoder = makeEncoder()
+        try await encoder.configure(wav: .cdQuality)
+        let result = try await encoder.flush()
+        #expect(result.isEmpty)
+    }
+
+    @Test("codec is pcm")
+    func codecIsPCM() {
+        let encoder = makeEncoder()
+        #expect(encoder.codec == .pcm)
+    }
+
+    @Test("is not hardware accelerated")
+    func isNotHardwareAccelerated() {
+        let encoder = makeEncoder()
+        #expect(encoder.isHardwareAccelerated == false)
+    }
+
+    @Test("supported bit rates is 0 for uncompressed")
+    func supportedBitRatesIsZero() {
+        let encoder = makeEncoder()
+        #expect(encoder.supportedBitRates == 0...0)
+    }
+
+    @Test("supports up to 64 channels")
+    func supportsUpTo64Channels() {
+        let encoder = makeEncoder()
+        #expect(encoder.supportedChannelCounts.count == 64)
+    }
+
+    @Test("supported sample rates is all cases")
+    func supportedSampleRatesIsAll() {
+        let encoder = makeEncoder()
+        #expect(encoder.supportedSampleRates == SampleRate.allCases)
+    }
 }

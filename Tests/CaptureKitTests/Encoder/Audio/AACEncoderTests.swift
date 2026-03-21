@@ -136,6 +136,32 @@ struct AACEncoderTests {
         #expect(result.codec == .aac)
     }
 
+    // MARK: - Generic configure
+
+    @Test("generic configure sets isConfigured")
+    func genericConfigure() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let encoder = makeEncoder()
+        let config = AudioEncoderConfiguration(
+            bitrate: 128_000,
+            sampleRate: .rate48000,
+            channelCount: 2
+        )
+        try await encoder.configure(config)
+        #expect(await encoder.isConfigured == true)
+    }
+
+    // MARK: - Flush
+
+    @Test("flush returns empty when no data buffered")
+    func flushReturnsEmpty() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let encoder = makeEncoder()
+        try await encoder.configure(aac: .podcast)
+        let result = try await encoder.flush()
+        #expect(result.isEmpty)
+    }
+
     @Test(
         "AAC encoder provides packet sizes that sum to data count",
         .tags(.hardware)

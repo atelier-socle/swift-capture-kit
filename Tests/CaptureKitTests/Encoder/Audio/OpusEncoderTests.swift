@@ -87,4 +87,59 @@ struct OpusEncoderTests {
         let result = try await encoder.encode(buffer)
         #expect(result.codec == .opus)
     }
+
+    // MARK: - Generic configure path
+
+    @Test("generic configure sets isConfigured")
+    func genericConfigure() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let encoder = makeEncoder()
+        let config = AudioEncoderConfiguration(
+            bitrate: 128_000,
+            sampleRate: .rate48000,
+            channelCount: 2
+        )
+        try await encoder.configure(config)
+        #expect(await encoder.isConfigured == true)
+    }
+
+    // MARK: - Flush / Reset
+
+    @Test("flush returns empty when no data buffered")
+    func flushReturnsEmpty() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let encoder = makeEncoder()
+        try await encoder.configure(opus: .musicStreaming)
+        let result = try await encoder.flush()
+        #expect(result.isEmpty)
+    }
+
+    @Test("reset clears isConfigured")
+    func resetClearsIsConfigured() async throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else { return }
+        let encoder = makeEncoder()
+        try await encoder.configure(opus: .musicStreaming)
+        #expect(await encoder.isConfigured == true)
+        await encoder.reset()
+        #expect(await encoder.isConfigured == false)
+    }
+
+    // MARK: - Supported channels
+
+    @Test("supports up to 8 channels")
+    func supportsUpTo8Channels() {
+        let encoder = makeEncoder()
+        #expect(encoder.supportedChannelCounts == Array(1...8))
+    }
+
+    // MARK: - Supported sample rates
+
+    @Test("supported sample rates include 8k, 16k, 48k")
+    func supportedSampleRates() {
+        let encoder = makeEncoder()
+        let rates = encoder.supportedSampleRates
+        #expect(rates.contains(.rate8000))
+        #expect(rates.contains(.rate16000))
+        #expect(rates.contains(.rate48000))
+    }
 }

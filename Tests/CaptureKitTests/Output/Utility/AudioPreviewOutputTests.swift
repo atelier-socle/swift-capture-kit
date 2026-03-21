@@ -88,11 +88,84 @@ struct AudioPreviewOutputTests {
         let id = await output.outputID
         #expect(id.hasPrefix("audio-preview-"))
     }
+
+    // MARK: - DI with mock playback engine
+
+    @Test("prepare with audio format calls engine prepare")
+    func prepareWithAudioFormat() async throws {
+        let engine = MockAudioPlaybackEngine()
+        let output = AudioPreviewOutput(
+            volume: 0.8, playbackEngine: engine)
+        let format = AudioFormat(
+            sampleRate: .rate48000,
+            channelCount: 2,
+            channelLayout: .stereo,
+            bitDepth: .float32
+        )
+        try await output.prepare(
+            audioFormat: format, videoFormat: nil)
+        #expect(await engine.prepareCallCount == 1)
+        #expect(await output.state == .active)
+    }
+
+    @Test("receiveAudio plays through engine")
+    func receiveAudioPlaysThrough() async throws {
+        let engine = MockAudioPlaybackEngine()
+        let output = AudioPreviewOutput(
+            volume: 1.0, playbackEngine: engine)
+        try await output.prepare(
+            audioFormat: nil, videoFormat: nil)
+        let buffer = EncodedAudioBuffer(
+            data: Data([0x01, 0x02]), codec: .aac,
+            timestamp: 0, duration: 0.1, sequenceNumber: 0)
+        try await output.receiveAudio(buffer)
+        #expect(await engine.playCallCount == 1)
+    }
+
+    @Test("finalize stops engine")
+    func finalizeStopsEngine() async throws {
+        let engine = MockAudioPlaybackEngine()
+        let output = AudioPreviewOutput(
+            volume: 1.0, playbackEngine: engine)
+        try await output.prepare(
+            audioFormat: nil, videoFormat: nil)
+        try await output.finalize()
+        #expect(await engine.stopCallCount == 1)
+    }
 }
 
 extension AudioPreviewOutput {
     /// Test helper to set muted state.
     func setMuted(_ muted: Bool) {
         self.isMuted = muted
+    }
+}
+
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+actor MockAudioPlaybackEngine: AudioPlaybackProviding {
+    var prepareCallCount = 0
+    var playCallCount = 0
+    var stopCallCount = 0
+    var lastVolume: Float = 1.0
+    var lastMuted: Bool = false
+
+    func prepare(format: AudioFormat) async throws {
+        prepareCallCount += 1
+    }
+
+    func play(_ data: Data) async throws {
+        playCallCount += 1
+    }
+
+    func setVolume(_ volume: Float) async {
+        lastVolume = volume
+    }
+
+    func setMuted(_ muted: Bool) async {
+        lastMuted = muted
+    }
+
+    func stop() async {
+        stopCallCount += 1
     }
 }
