@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("MediaPacket")
+@Suite("MediaPacket", .timeLimit(.minutes(1)))
 struct MediaPacketTests {
 
     @Test("video packet exposes frame timestamp")

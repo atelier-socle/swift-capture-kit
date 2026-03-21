@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("SampleRate")
+@Suite("SampleRate", .timeLimit(.minutes(1)))
 struct SampleRateTests {
 
     @Test("CaseIterable count is 14")

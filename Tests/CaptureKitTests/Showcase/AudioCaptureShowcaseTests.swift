@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Audio Capture Showcase", .tags(.showcase))
+@Suite("Audio Capture Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct AudioCaptureShowcaseTests {
 
     // MARK: - ToneSource
@@ -30,15 +30,13 @@ struct AudioCaptureShowcaseTests {
             let tone = ToneSource(waveform: waveform)
             try await tone.configure(.default)
             let stream = try await tone.startCapture()
-            var receivedBuffer = false
-            for await buffer in stream {
+            let buffer = await firstValue(from: stream)
+            await tone.stopCapture()
+            #expect(buffer != nil, "Waveform \(waveform) produced no buffers")
+            if let buffer {
                 #expect(buffer.data.count > 0)
                 #expect(buffer.duration > 0)
-                receivedBuffer = true
-                break
             }
-            await tone.stopCapture()
-            #expect(receivedBuffer, "Waveform \(waveform) produced no buffers")
         }
     }
 
@@ -67,7 +65,7 @@ struct AudioCaptureShowcaseTests {
         let stream = try await tone.startCapture()
         #expect(await tone.isCapturing == true)
 
-        for await _ in stream { break }
+        _ = await firstValue(from: stream)
 
         await tone.stopCapture()
         #expect(await tone.isCapturing == false)

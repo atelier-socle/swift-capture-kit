@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileVideoSource with DI")
+@Suite("FileVideoSource with DI", .timeLimit(.minutes(1)))
 struct FileVideoSourceIntegrationTests {
 
     private func makeSample(
@@ -45,6 +45,7 @@ struct FileVideoSourceIntegrationTests {
         let readCount = await reader.readCallCount
         #expect(openCount == 1)
         #expect(readCount == 1)
+        await source.stopCapture()
     }
 
     @Test("produces VideoFrame from CapturedVideoSample")
@@ -89,6 +90,7 @@ struct FileVideoSourceIntegrationTests {
         _ = try await source.startCapture()
         let duration = await source.fileDuration
         #expect(duration == 42.0)
+        await source.stopCapture()
     }
 
     @Test("sequential frames have incrementing sequence numbers")

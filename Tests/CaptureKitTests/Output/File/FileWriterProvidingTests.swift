@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileWriterProviding mock integration")
+@Suite("FileWriterProviding mock integration", .timeLimit(.minutes(1)))
 struct FileWriterProvidingTests {
 
     @Test("MockFileWriter tracks prepare calls")

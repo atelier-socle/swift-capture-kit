@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioToolboxEncoder")
+@Suite("AudioToolboxEncoder", .timeLimit(.minutes(1)))
 struct AudioToolboxEncoderTests {
 
     @Test("AAC encoder uses mock provider")

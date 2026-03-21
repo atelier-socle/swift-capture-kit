@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Streaming Pipeline E2E", .tags(.e2e))
+@Suite("Streaming Pipeline E2E", .tags(.e2e), .timeLimit(.minutes(1)))
 struct StreamingPipelineE2ETests {
 
     // MARK: - Helpers

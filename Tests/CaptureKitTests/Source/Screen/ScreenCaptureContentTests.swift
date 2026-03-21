@@ -8,7 +8,7 @@ import Testing
 
 private let defaultFrame = ScreenRect(x: 0, y: 0, width: 1920, height: 1080)
 
-@Suite("ScreenCaptureContent")
+@Suite("ScreenCaptureContent", .timeLimit(.minutes(1)))
 struct ScreenCaptureContentTests {
 
     @Test("empty content is valid")

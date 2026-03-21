@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ColorSource")
+@Suite("ColorSource", .timeLimit(.minutes(1)))
 struct ColorSourceTests {
 
     @Test("has generator source type")
@@ -58,11 +58,7 @@ struct ColorSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ColorSource(color: .red, resolution: .qvga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var firstFrame: VideoFrame?
-        for await frame in stream {
-            firstFrame = frame
-            break
-        }
+        let firstFrame = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstFrame?.data)
@@ -75,11 +71,7 @@ struct ColorSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ColorSource(color: .red, resolution: .qvga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var firstFrame: VideoFrame?
-        for await frame in stream {
-            firstFrame = frame
-            break
-        }
+        let firstFrame = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstFrame?.data)
@@ -95,11 +87,7 @@ struct ColorSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ColorSource(color: .white, resolution: .qvga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var firstFrame: VideoFrame?
-        for await frame in stream {
-            firstFrame = frame
-            break
-        }
+        let firstFrame = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstFrame?.data)
@@ -115,11 +103,7 @@ struct ColorSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ColorSource(color: .green, resolution: .vga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var firstFrame: VideoFrame?
-        for await frame in stream {
-            firstFrame = frame
-            break
-        }
+        let firstFrame = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstFrame?.data)
@@ -161,11 +145,7 @@ struct ColorSourceTests {
         let halfAlphaColor = CaptureColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 0.5)
         let source = ColorSource(color: halfAlphaColor, resolution: .qvga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var firstFrame: VideoFrame?
-        for await frame in stream {
-            firstFrame = frame
-            break
-        }
+        let firstFrame = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstFrame?.data)

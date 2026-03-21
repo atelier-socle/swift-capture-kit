@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("DeviceChangeEvent")
+@Suite("DeviceChangeEvent", .timeLimit(.minutes(1)))
 struct DeviceChangeEventTests {
 
     @Test("audioDeviceConnected carries device info")

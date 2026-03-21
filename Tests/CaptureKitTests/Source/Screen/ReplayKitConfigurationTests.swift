@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ReplayKitConfiguration")
+@Suite("ReplayKitConfiguration", .timeLimit(.minutes(1)))
 struct ReplayKitConfigurationTests {
 
     @Test("default preset has all disabled")

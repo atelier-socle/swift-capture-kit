@@ -6,7 +6,10 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("OpusEncoder")
+@Suite(
+    "OpusEncoder",
+    .enabled(if: !TestEnvironment.isCI, "Real AudioToolbox encoder hangs without audio services on CI"),
+    .timeLimit(.minutes(1)))
 struct OpusEncoderTests {
     private func makeEncoder() -> OpusEncoder {
         OpusEncoder(configuration: .musicStreaming)

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PhotoCaptureSettings")
+@Suite("PhotoCaptureSettings", .timeLimit(.minutes(1)))
 struct PhotoCaptureSettingsTests {
 
     @Test("PhotoFormat allCases has four members")

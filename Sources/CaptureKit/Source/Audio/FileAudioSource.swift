@@ -135,6 +135,8 @@ public actor FileAudioSource: AudioSource {
         self.fileReader = fileReader
     }
 
+    deinit { _audioLevelContinuation.finish() }
+
     /// Configures this source with the given audio source configuration.
     ///
     /// - Parameter configuration: The desired audio source configuration.
@@ -230,6 +232,7 @@ public actor FileAudioSource: AudioSource {
     public func stopCapture() async {
         await fileReader.stop()
         isCapturing = false
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

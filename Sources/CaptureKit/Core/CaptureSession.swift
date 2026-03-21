@@ -240,6 +240,8 @@ public actor CaptureSession {
         startTime = nil
         statistics = .zero
         setState(.idle)
+        eventContinuation?.finish()
+        eventContinuation = nil
     }
 
     // MARK: - Dynamic Control

@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ToneWaveform")
+@Suite("ToneWaveform", .timeLimit(.minutes(1)))
 struct ToneWaveformTests {
 
     @Test("all eight cases exist")

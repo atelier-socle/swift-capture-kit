@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileOutput")
+@Suite("FileOutput", .timeLimit(.minutes(1)))
 struct FileOutputTests {
 
     private func makeOutput() -> FileOutput {

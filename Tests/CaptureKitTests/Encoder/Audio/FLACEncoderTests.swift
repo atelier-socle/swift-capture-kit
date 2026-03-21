@@ -6,7 +6,10 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FLACEncoder")
+@Suite(
+    "FLACEncoder",
+    .enabled(if: !TestEnvironment.isCI, "Real AudioToolbox encoder hangs without audio services on CI"),
+    .timeLimit(.minutes(1)))
 struct FLACEncoderTests {
     private func makeEncoder() -> FLACEncoder {
         FLACEncoder(configuration: .balanced)

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AdaptiveQualityManager — Edge Cases")
+@Suite("AdaptiveQualityManager — Edge Cases", .timeLimit(.minutes(1)))
 struct AdaptiveQualityManagerEdgeCaseTests {
 
     private func poorReport() -> StreamingTransportQuality {

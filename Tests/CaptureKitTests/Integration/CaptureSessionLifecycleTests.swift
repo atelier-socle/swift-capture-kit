@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSession Lifecycle Integration")
+@Suite("CaptureSession Lifecycle Integration", .timeLimit(.minutes(1)))
 struct CaptureSessionLifecycleTests {
 
     // MARK: - Basic Lifecycle

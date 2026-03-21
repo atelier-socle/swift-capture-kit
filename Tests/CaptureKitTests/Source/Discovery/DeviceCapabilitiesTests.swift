@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("DeviceCapabilities")
+@Suite("DeviceCapabilities", .timeLimit(.minutes(1)))
 struct DeviceCapabilitiesTests {
 
     @Test("available returns non-empty set")

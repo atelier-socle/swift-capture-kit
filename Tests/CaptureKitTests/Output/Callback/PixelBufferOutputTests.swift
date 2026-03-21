@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PixelBufferOutput")
+@Suite("PixelBufferOutput", .timeLimit(.minutes(1)))
 struct PixelBufferOutputTests {
 
     @Test("has pixelBuffer output type")

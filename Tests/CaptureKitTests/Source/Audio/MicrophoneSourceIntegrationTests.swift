@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("MicrophoneSource with DI")
+@Suite("MicrophoneSource with DI", .timeLimit(.minutes(1)))
 struct MicrophoneSourceIntegrationTests {
 
     private func makeSample(

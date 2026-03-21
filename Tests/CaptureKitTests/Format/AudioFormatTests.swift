@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioFormat")
+@Suite("AudioFormat", .timeLimit(.minutes(1)))
 struct AudioFormatTests {
 
     @Test("Init with all parameters stores values correctly")

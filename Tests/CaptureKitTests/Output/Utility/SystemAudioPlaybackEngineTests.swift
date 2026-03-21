@@ -7,7 +7,10 @@
 
     @testable import CaptureKit
 
-    @Suite("SystemAudioPlaybackEngine")
+    @Suite(
+        "SystemAudioPlaybackEngine",
+        .enabled(if: !TestEnvironment.isCI, "AVAudioEngine hangs without audio hardware on CI"),
+        .timeLimit(.minutes(1)))
     struct SystemAudioPlaybackEngineTests {
 
         @Test(

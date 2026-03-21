@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PreviewOutput")
+@Suite("PreviewOutput", .timeLimit(.minutes(1)))
 struct PreviewOutputTests {
 
     @Test("has preview output type")

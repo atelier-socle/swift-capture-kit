@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ColorSpace")
+@Suite("ColorSpace", .timeLimit(.minutes(1)))
 struct ColorSpaceTests {
 
     @Test("CaseIterable count is 8")

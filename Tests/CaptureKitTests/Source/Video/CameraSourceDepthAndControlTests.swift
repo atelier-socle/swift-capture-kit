@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CameraSource depth and control wiring")
+@Suite("CameraSource depth and control wiring", .timeLimit(.minutes(1)))
 struct CameraSourceDepthAndControlTests {
 
     @Test("depthDataDelivery default is false")
@@ -34,6 +34,7 @@ struct CameraSourceDepthAndControlTests {
         _ = try await source.startCapture()
         let enabled = await engine.depthDataDeliveryEnabled
         #expect(enabled == true)
+        await source.stopCapture()
     }
 
     @Test("startCapture without depthDataDelivery does not call engine")
@@ -44,5 +45,6 @@ struct CameraSourceDepthAndControlTests {
         _ = try await source.startCapture()
         let enabled = await engine.depthDataDeliveryEnabled
         #expect(enabled == false)
+        await source.stopCapture()
     }
 }

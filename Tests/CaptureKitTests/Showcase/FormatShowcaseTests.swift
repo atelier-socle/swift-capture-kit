@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Format Showcase", .tags(.showcase))
+@Suite("Format Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct FormatShowcaseTests {
 
     // MARK: - SampleRate

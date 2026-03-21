@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileRotationConfiguration")
+@Suite("FileRotationConfiguration", .timeLimit(.minutes(1)))
 struct FileRotationConfigurationTests {
 
     @Test("byDuration factory method")

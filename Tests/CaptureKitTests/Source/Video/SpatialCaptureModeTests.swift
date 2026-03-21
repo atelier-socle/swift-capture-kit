@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("SpatialCaptureMode")
+@Suite("SpatialCaptureMode", .timeLimit(.minutes(1)))
 struct SpatialCaptureModeTests {
 
     @Test("CaseIterable count is 2")

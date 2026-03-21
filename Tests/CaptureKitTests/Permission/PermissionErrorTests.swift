@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PermissionError")
+@Suite("PermissionError", .timeLimit(.minutes(1)))
 struct PermissionErrorTests {
 
     @Test("denied description includes type")

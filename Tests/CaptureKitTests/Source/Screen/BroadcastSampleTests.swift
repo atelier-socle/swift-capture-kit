@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BroadcastSample")
+@Suite("BroadcastSample", .timeLimit(.minutes(1)))
 struct BroadcastSampleTests {
 
     @Test("BroadcastSample init stores properties")

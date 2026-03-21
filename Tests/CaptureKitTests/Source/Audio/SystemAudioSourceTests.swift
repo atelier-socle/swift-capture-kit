@@ -7,7 +7,7 @@ import Testing
 
 #if os(macOS)
 
-    @Suite("SystemAudioSource")
+    @Suite("SystemAudioSource", .timeLimit(.minutes(1)))
     struct SystemAudioSourceTests {
 
         @Test("has systemAudio source type")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PCMEncoderConfiguration")
+@Suite("PCMEncoderConfiguration", .timeLimit(.minutes(1)))
 struct PCMEncoderConfigurationTests {
     @Test("default values")
     func defaultValues() {

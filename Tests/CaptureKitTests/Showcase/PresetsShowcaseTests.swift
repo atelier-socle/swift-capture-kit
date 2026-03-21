@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Presets Showcase", .tags(.showcase))
+@Suite("Presets Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct PresetsShowcaseTests {
 
     // MARK: - PresetCategory

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("StreamingPipeline")
+@Suite("StreamingPipeline", .timeLimit(.minutes(1)))
 struct StreamingPipelineTests {
 
     // MARK: - Helpers

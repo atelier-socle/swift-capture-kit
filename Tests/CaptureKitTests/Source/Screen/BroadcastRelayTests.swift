@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BroadcastRelay")
+@Suite("BroadcastRelay", .timeLimit(.minutes(1)))
 struct BroadcastRelayTests {
 
     @Test("stores appGroupID")

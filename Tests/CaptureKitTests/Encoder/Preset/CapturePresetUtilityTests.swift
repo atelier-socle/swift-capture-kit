@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CapturePreset Utility Factory Methods")
+@Suite("CapturePreset Utility Factory Methods", .timeLimit(.minutes(1)))
 struct CapturePresetUtilityTests {
 
     // MARK: - Screen Recording

@@ -6,7 +6,10 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ALACEncoder")
+@Suite(
+    "ALACEncoder",
+    .enabled(if: !TestEnvironment.isCI, "Real AudioToolbox encoder hangs without audio services on CI"),
+    .timeLimit(.minutes(1)))
 struct ALACEncoderTests {
     private func makeEncoder() -> ALACEncoder {
         ALACEncoder(configuration: .studioQuality)

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VoIPAudioSource Voice Processing")
+@Suite("VoIPAudioSource Voice Processing", .timeLimit(.minutes(1)))
 struct VoIPAudioSourceVoiceProcessingTests {
 
     @Test("startCapture enables voice processing on engine")
@@ -19,6 +19,7 @@ struct VoIPAudioSourceVoiceProcessingTests {
         _ = try await source.startCapture()
         let enabled = await engine.voiceProcessingEnabled
         #expect(enabled == true)
+        await source.stopCapture()
     }
 
     @Test("startCapture with voice processing disabled does not enable it")
@@ -31,6 +32,7 @@ struct VoIPAudioSourceVoiceProcessingTests {
         _ = try await source.startCapture()
         let enabled = await engine.voiceProcessingEnabled
         #expect(enabled == false)
+        await source.stopCapture()
     }
 
     @Test("VP failure falls back and still delivers buffers")
@@ -67,6 +69,7 @@ struct VoIPAudioSourceVoiceProcessingTests {
         #expect(startCount == 2, "Should restart capture after VP failure")
         let vpEnabled = await engine.voiceProcessingEnabled
         #expect(vpEnabled == false, "VP should remain disabled after fallback")
+        await source.stopCapture()
     }
 
     @Test("voiceIsolationEnabled can be set")

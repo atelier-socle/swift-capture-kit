@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioMeterConfiguration")
+@Suite("AudioMeterConfiguration", .timeLimit(.minutes(1)))
 struct AudioMeterConfigurationTests {
 
     @Test("default values")

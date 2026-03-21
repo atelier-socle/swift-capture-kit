@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BlackSource")
+@Suite("BlackSource", .timeLimit(.minutes(1)))
 struct BlackSourceTests {
 
     @Test("has generator source type")
@@ -124,11 +124,7 @@ struct BlackSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = BlackSource(resolution: .vga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var firstFrame: VideoFrame?
-        for await frame in stream {
-            firstFrame = frame
-            break
-        }
+        let firstFrame = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstFrame?.data)
@@ -141,11 +137,7 @@ struct BlackSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = BlackSource(resolution: .vga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var firstFrame: VideoFrame?
-        for await frame in stream {
-            firstFrame = frame
-            break
-        }
+        let firstFrame = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstFrame?.data)
@@ -158,11 +150,7 @@ struct BlackSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = BlackSource(resolution: .vga, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var frames: [VideoFrame] = []
-        for await frame in stream {
-            frames.append(frame)
-            if frames.count >= 2 { break }
-        }
+        let frames = await collectValues(from: stream, count: 2)
         await source.stopCapture()
 
         #expect(frames.count == 2)

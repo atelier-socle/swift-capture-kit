@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("WaveformData")
+@Suite("WaveformData", .timeLimit(.minutes(1)))
 struct WaveformDataTests {
 
     @Test("stores timestamp and duration")

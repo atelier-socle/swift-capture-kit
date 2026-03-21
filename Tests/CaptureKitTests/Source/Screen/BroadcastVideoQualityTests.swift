@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BroadcastVideoQuality")
+@Suite("BroadcastVideoQuality", .timeLimit(.minutes(1)))
 struct BroadcastVideoQualityTests {
 
     @Test("CaseIterable count is 3")

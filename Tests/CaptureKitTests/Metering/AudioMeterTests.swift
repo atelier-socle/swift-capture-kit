@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioMeter")
+@Suite("AudioMeter", .timeLimit(.minutes(1)))
 struct AudioMeterTests {
 
     private func makeBuffer(samples: [Float]) -> AudioBuffer {
@@ -35,6 +35,7 @@ struct AudioMeterTests {
         let meter = AudioMeter()
         await meter.start()
         #expect(await meter.isActive == true)
+        await meter.stop()
     }
 
     @Test("stop sets isActive false")

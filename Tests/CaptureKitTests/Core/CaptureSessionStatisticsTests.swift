@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSessionStatistics")
+@Suite("CaptureSessionStatistics", .timeLimit(.minutes(1)))
 struct CaptureSessionStatisticsTests {
 
     @Test("zero has all zero values")

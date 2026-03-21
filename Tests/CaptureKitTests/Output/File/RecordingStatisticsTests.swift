@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("RecordingStatistics")
+@Suite("RecordingStatistics", .timeLimit(.minutes(1)))
 struct RecordingStatisticsTests {
 
     @Test("zero preset has all zeros")

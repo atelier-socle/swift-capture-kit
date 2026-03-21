@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AdaptiveQualityManager — Core")
+@Suite("AdaptiveQualityManager — Core", .timeLimit(.minutes(1)))
 struct AdaptiveQualityManagerCoreTests {
 
     // MARK: - Helpers

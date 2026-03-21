@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureQualityLevel Transitions")
+@Suite("CaptureQualityLevel Transitions", .timeLimit(.minutes(1)))
 struct CaptureQualityLevelTransitionsTests {
 
     // MARK: - Degraded

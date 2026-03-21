@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CapturePreset Professional Factory Methods")
+@Suite("CapturePreset Professional Factory Methods", .timeLimit(.minutes(1)))
 struct CapturePresetProfessionalTests {
 
     // MARK: - Radio / Web Radio

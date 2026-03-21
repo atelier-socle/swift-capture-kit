@@ -6,7 +6,10 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AACEncoder")
+@Suite(
+    "AACEncoder",
+    .enabled(if: !TestEnvironment.isCI, "Real AudioToolbox AudioConverterNew hangs without audio services on CI"),
+    .timeLimit(.minutes(1)))
 struct AACEncoderTests {
     private func makeEncoder() -> AACEncoder {
         AACEncoder(configuration: .podcast)
@@ -164,8 +167,7 @@ struct AACEncoderTests {
 
     @Test(
         "AAC encoder provides packet sizes that sum to data count",
-        .tags(.hardware)
-    )
+        .tags(.hardware))
     func aacEncoderPacketSizes() async throws {
         guard #available(macOS 14.0, iOS 17.0, *) else { return }
         let encoder = AACEncoder(

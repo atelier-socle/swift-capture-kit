@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BitDepth")
+@Suite("BitDepth", .timeLimit(.minutes(1)))
 struct BitDepthTests {
 
     @Test("rawValue correctness for all cases")
@@ -34,7 +34,7 @@ struct BitDepthTests {
     }
 }
 
-@Suite("AudioBitDepth")
+@Suite("AudioBitDepth", .timeLimit(.minutes(1)))
 struct AudioBitDepthTests {
 
     @Test("All 5 cases exist with correct rawValues")

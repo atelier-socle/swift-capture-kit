@@ -19,7 +19,7 @@ private func makeValidConfig() -> MultiCameraConfiguration {
     ])
 }
 
-@Suite("MultiCameraSource")
+@Suite("MultiCameraSource", .timeLimit(.minutes(1)))
 struct MultiCameraSourceTests {
 
     @Test("has multiCamera source type")

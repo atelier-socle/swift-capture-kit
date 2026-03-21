@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VoIPAudioSource")
+@Suite("VoIPAudioSource", .timeLimit(.minutes(1)))
 struct VoIPAudioSourceTests {
 
     @Test("has voip source type")

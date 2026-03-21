@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BluetoothAudioCodec")
+@Suite("BluetoothAudioCodec", .timeLimit(.minutes(1)))
 struct BluetoothAudioCodecTests {
 
     @Test("all eight cases exist")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AggregateAudioSource Drift Compensation")
+@Suite("AggregateAudioSource Drift Compensation", .timeLimit(.minutes(1)))
 struct AggregateAudioSourceDriftTests {
 
     private func makeDevices() -> [AudioDeviceInfo] {

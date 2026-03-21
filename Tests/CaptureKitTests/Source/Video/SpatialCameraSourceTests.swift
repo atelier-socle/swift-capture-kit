@@ -7,7 +7,7 @@
 
     @testable import CaptureKit
 
-    @Suite("SpatialCameraSource")
+    @Suite("SpatialCameraSource", .timeLimit(.minutes(1)))
     struct SpatialCameraSourceTests {
 
         @Test("has spatialCamera source type")

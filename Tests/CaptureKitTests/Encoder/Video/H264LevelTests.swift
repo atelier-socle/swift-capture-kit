@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("H264Level")
+@Suite("H264Level", .timeLimit(.minutes(1)))
 struct H264LevelTests {
     @Test("all cases are available")
     func allCases() {

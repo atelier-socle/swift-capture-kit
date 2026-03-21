@@ -6,7 +6,10 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AVAssetWriterEngine")
+@Suite(
+    "AVAssetWriterEngine",
+    .enabled(if: !TestEnvironment.isCI, "AVAssetWriter hangs without media services on CI"),
+    .timeLimit(.minutes(1)))
 struct AVAssetWriterEngineTests {
 
     @Test("prepare with video format succeeds", .tags(.hardware))
@@ -33,9 +36,7 @@ struct AVAssetWriterEngineTests {
         try await engine.finalize()
     }
 
-    @Test(
-        "writeVideo with BGRA data produces non-zero bytes",
-        .tags(.hardware))
+    @Test("writeVideo with BGRA data produces non-zero bytes", .tags(.hardware))
     func writeVideoWithBGRAData() async throws {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
         else { return }

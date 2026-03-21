@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("DeviceDiscovery")
+@Suite("DeviceDiscovery", .timeLimit(.minutes(1)))
 struct DeviceDiscoveryTests {
 
     @Test("initially empty device lists")

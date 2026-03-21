@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioBitrateMode")
+@Suite("AudioBitrateMode", .timeLimit(.minutes(1)))
 struct AudioBitrateModeTests {
     @Test("all cases are available")
     func allCasesAvailable() {

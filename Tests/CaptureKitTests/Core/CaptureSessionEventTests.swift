@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSessionEvent")
+@Suite("CaptureSessionEvent", .timeLimit(.minutes(1)))
 struct CaptureSessionEventTests {
 
     @Test("Can create stateChanged event")

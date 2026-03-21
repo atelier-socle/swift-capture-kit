@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileRotationTrigger")
+@Suite("FileRotationTrigger", .timeLimit(.minutes(1)))
 struct FileRotationTriggerTests {
 
     @Test("duration trigger stores seconds")

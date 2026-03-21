@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PermissionManager")
+@Suite("PermissionManager", .timeLimit(.minutes(1)))
 struct PermissionManagerTests {
 
     @Test("initial status is a valid PermissionStatus")
@@ -45,14 +45,18 @@ struct PermissionManagerTests {
         #expect(cam == camBefore)
     }
 
-    @Test("request returns a valid status")
+    @Test(
+        "request returns a valid status",
+        .enabled(if: !TestEnvironment.isCI, "Triggers system permission prompt"))
     func requestInitial() async {
         let manager = PermissionManager()
         let result = await manager.request(.microphone)
         #expect(PermissionStatus.allCases.contains(result))
     }
 
-    @Test("requestAll for multiple types returns all requested")
+    @Test(
+        "requestAll for multiple types returns all requested",
+        .enabled(if: !TestEnvironment.isCI, "Triggers system permission prompt"))
     func requestAllMultiple() async {
         let manager = PermissionManager()
         let results = await manager.requestAll(
@@ -119,7 +123,9 @@ struct PermissionManagerTests {
         #expect(status == .notDetermined)
     }
 
-    @Test("request for already authorized permission returns authorized immediately")
+    @Test(
+        "request for already authorized permission returns authorized immediately",
+        .enabled(if: !TestEnvironment.isCI, "Triggers system permission prompt"))
     func requestAlreadyAuthorized() async {
         let manager = PermissionManager()
         let first = await manager.request(.microphone)

@@ -6,7 +6,7 @@
     import Testing
     @testable import CaptureKit
 
-    @Suite("MP3Encoder")
+    @Suite("MP3Encoder", .timeLimit(.minutes(1)))
     struct MP3EncoderTests {
         private func makeEncoder() -> MP3Encoder {
             MP3Encoder(

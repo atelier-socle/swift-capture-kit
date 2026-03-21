@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("MultiCameraConfiguration")
+@Suite("MultiCameraConfiguration", .timeLimit(.minutes(1)))
 struct MultiCameraConfigurationTests {
 
     private func makeDevice(id: String = "dev-1", name: String = "Camera") -> VideoDeviceInfo {

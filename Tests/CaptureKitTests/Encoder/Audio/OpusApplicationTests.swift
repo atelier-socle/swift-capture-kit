@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("OpusApplication")
+@Suite("OpusApplication", .timeLimit(.minutes(1)))
 struct OpusApplicationTests {
     @Test("all cases are available")
     func allCasesAvailable() {

@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoFormat")
+@Suite("VideoFormat", .timeLimit(.minutes(1)))
 struct VideoFormatTests {
 
     @Test("Init with all parameters stores values correctly")

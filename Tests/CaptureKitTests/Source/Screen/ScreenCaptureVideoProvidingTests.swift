@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ScreenCaptureVideoProviding")
+@Suite("ScreenCaptureVideoProviding", .timeLimit(.minutes(1)))
 struct ScreenCaptureVideoProvidingTests {
 
     @Test("NoOpScreenCaptureVideoProvider throws on startCapture")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Error Handling Showcase", .tags(.showcase))
+@Suite("Error Handling Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct ErrorHandlingShowcaseTests {
 
     // MARK: - Session Errors

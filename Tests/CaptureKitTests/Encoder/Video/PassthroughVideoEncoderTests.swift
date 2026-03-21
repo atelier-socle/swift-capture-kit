@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PassthroughVideoEncoder")
+@Suite("PassthroughVideoEncoder", .timeLimit(.minutes(1)))
 struct PassthroughVideoEncoderTests {
 
     @Test("configure does not throw")

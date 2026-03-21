@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Encoding Showcase", .tags(.showcase))
+@Suite("Encoding Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct EncodingShowcaseTests {
 
     // MARK: - Audio Codec Types

@@ -103,6 +103,8 @@ public actor VoIPAudioSource: AudioSource {
         self.captureEngine = captureEngine
     }
 
+    deinit { _audioLevelContinuation.finish() }
+
     /// Configures this source with the given audio source configuration.
     ///
     /// - Parameter configuration: The desired audio source configuration.
@@ -223,6 +225,7 @@ public actor VoIPAudioSource: AudioSource {
     public func stopCapture() async {
         await captureEngine.stopCapture()
         isCapturing = false
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

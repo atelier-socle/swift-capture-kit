@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("NullOutput")
+@Suite("NullOutput", .timeLimit(.minutes(1)))
 struct NullOutputTests {
 
     @Test("has null output type")

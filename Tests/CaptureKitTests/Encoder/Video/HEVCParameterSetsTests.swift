@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("HEVCEncoder parameterSets")
+@Suite("HEVCEncoder parameterSets", .timeLimit(.minutes(1)))
 struct HEVCParameterSetsTests {
 
     private func makeEncoder() -> HEVCEncoder {

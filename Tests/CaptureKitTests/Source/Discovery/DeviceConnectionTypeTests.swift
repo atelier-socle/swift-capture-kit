@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("DeviceConnectionType")
+@Suite("DeviceConnectionType", .timeLimit(.minutes(1)))
 struct DeviceConnectionTypeTests {
 
     @Test("all six cases exist")

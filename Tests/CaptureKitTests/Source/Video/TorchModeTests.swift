@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("TorchMode")
+@Suite("TorchMode", .timeLimit(.minutes(1)))
 struct TorchModeTests {
 
     @Test("CaseIterable count is 3")

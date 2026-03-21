@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ExternalCameraSource continuity wiring")
+@Suite("ExternalCameraSource continuity wiring", .timeLimit(.minutes(1)))
 struct ExternalCameraSourceContinuityTests {
 
     private func makeDevice() -> VideoDeviceInfo {
@@ -35,6 +35,7 @@ struct ExternalCameraSourceContinuityTests {
         let applied = await engine.lastContinuityFeatures
         #expect(applied != nil)
         #expect(applied?.centerStage == true)
+        await source.stopCapture()
     }
 
     @Test("startCapture without continuity features does not call engine")
@@ -46,6 +47,7 @@ struct ExternalCameraSourceContinuityTests {
         _ = try await source.startCapture()
         let applied = await engine.lastContinuityFeatures
         #expect(applied == nil)
+        await source.stopCapture()
     }
 }
 

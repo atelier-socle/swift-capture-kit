@@ -35,6 +35,9 @@ public actor SilenceSource: AudioSource {
     private let _audioLevelStream: AsyncStream<AudioLevelSample>
     private let _audioLevelContinuation: AsyncStream<AudioLevelSample>.Continuation
 
+    /// The active stream continuation, stored so stopCapture() can finish it.
+    private var _streamContinuation: AsyncStream<AudioBuffer>.Continuation?
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [
@@ -55,6 +58,11 @@ public actor SilenceSource: AudioSource {
         let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
         self._audioLevelStream = stream
         self._audioLevelContinuation = continuation
+    }
+
+    deinit {
+        _streamContinuation?.finish()
+        _audioLevelContinuation.finish()
     }
 
     /// Configures this source with the given audio source configuration.
@@ -108,39 +116,45 @@ public actor SilenceSource: AudioSource {
             }
         }
 
-        return AsyncStream { continuation in
-            let task = Task { @concurrent in
-                var sequenceNumber: Int64 = 0
-                let sleepDuration = config.preferredBufferDuration
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioBuffer.self)
+        _streamContinuation = continuation
 
-                while !Task.isCancelled {
-                    let buffer = AudioBuffer(
-                        data: Data(count: bufferSize),
-                        format: format,
-                        timestamp: TimeInterval(sequenceNumber) * sleepDuration,
-                        duration: sleepDuration,
-                        sequenceNumber: sequenceNumber
-                    )
-                    continuation.yield(buffer)
-                    await meter.processBuffer(buffer)
-                    sequenceNumber += 1
+        let task = Task { @concurrent in
+            var sequenceNumber: Int64 = 0
+            let sleepDuration = config.preferredBufferDuration
 
-                    try? await Task.sleep(for: .seconds(sleepDuration))
-                }
-                continuation.finish()
-                forwardTask.cancel()
+            while !Task.isCancelled {
+                let buffer = AudioBuffer(
+                    data: Data(count: bufferSize),
+                    format: format,
+                    timestamp: TimeInterval(sequenceNumber) * sleepDuration,
+                    duration: sleepDuration,
+                    sequenceNumber: sequenceNumber
+                )
+                continuation.yield(buffer)
+                await meter.processBuffer(buffer)
+                sequenceNumber += 1
+
+                try? await Task.sleep(for: .seconds(sleepDuration))
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-                forwardTask.cancel()
-            }
+            continuation.finish()
+            forwardTask.cancel()
         }
+
+        continuation.onTermination = { _ in
+            task.cancel()
+            forwardTask.cancel()
+        }
+
+        return stream
     }
 
     /// Stops generating silent audio buffers.
     public func stopCapture() async {
         isCapturing = false
+        _streamContinuation?.finish()
+        _streamContinuation = nil
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

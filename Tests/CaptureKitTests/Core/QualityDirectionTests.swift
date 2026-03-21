@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("QualityDirection")
+@Suite("QualityDirection", .timeLimit(.minutes(1)))
 struct QualityDirectionTests {
 
     @Test("allCases has exactly two members")

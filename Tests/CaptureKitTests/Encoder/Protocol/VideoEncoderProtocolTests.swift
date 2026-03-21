@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoEncoderProtocol")
+@Suite("VideoEncoderProtocol", .timeLimit(.minutes(1)))
 struct VideoEncoderProtocolTests {
 
     @Test("MockVideoEncoder conforms to VideoEncoderProtocol")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PCMByteOrder")
+@Suite("PCMByteOrder", .timeLimit(.minutes(1)))
 struct PCMByteOrderTests {
     @Test("all cases are available")
     func allCasesAvailable() {

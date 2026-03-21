@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Video Pipeline Integration")
+@Suite("Video Pipeline Integration", .timeLimit(.minutes(1)))
 struct VideoPipelineIntegrationTests {
 
     private func makeFrame(
@@ -35,14 +35,12 @@ struct VideoPipelineIntegrationTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = BlackSource(resolution: .p720, frameRate: .fps30)
         let stream = try await source.startCapture()
-        var frameCount = 0
-        for await frame in stream {
-            #expect(frame.format.resolution == .p720)
-            frameCount += 1
-            if frameCount >= 3 { break }
-        }
+        let frames = await collectValues(from: stream, count: 3)
         await source.stopCapture()
-        #expect(frameCount >= 3)
+        #expect(frames.count >= 3)
+        for frame in frames {
+            #expect(frame.format.resolution == .p720)
+        }
     }
 
     @Test("ColorSource produces frames")
@@ -53,13 +51,9 @@ struct VideoPipelineIntegrationTests {
             resolution: .vga, frameRate: .fps30
         )
         let stream = try await source.startCapture()
-        var frameCount = 0
-        for await _ in stream {
-            frameCount += 1
-            if frameCount >= 2 { break }
-        }
+        let frames = await collectValues(from: stream, count: 2)
         await source.stopCapture()
-        #expect(frameCount >= 2)
+        #expect(frames.count >= 2)
     }
 
     @Test("TestPatternSource produces frames")
@@ -71,13 +65,9 @@ struct VideoPipelineIntegrationTests {
             frameRate: .fps30
         )
         let stream = try await source.startCapture()
-        var frameCount = 0
-        for await _ in stream {
-            frameCount += 1
-            if frameCount >= 2 { break }
-        }
+        let frames = await collectValues(from: stream, count: 2)
         await source.stopCapture()
-        #expect(frameCount >= 2)
+        #expect(frames.count >= 2)
     }
 
     @Test("mock encoder encodes frame and returns data")
@@ -101,14 +91,15 @@ struct VideoPipelineIntegrationTests {
 
         let source = BlackSource(resolution: .p1080, frameRate: .fps30)
         let stream = try await source.startCapture()
+        let frames = await collectValues(from: stream, count: 3)
+        await source.stopCapture()
+
         var encodedCount = 0
-        for await frame in stream {
+        for frame in frames {
             let encoded = try await encoder.encode(frame)
             #expect(encoded.codec == .h264)
             encodedCount += 1
-            if encodedCount >= 3 { break }
         }
-        await source.stopCapture()
         #expect(encodedCount >= 3)
     }
 
@@ -155,6 +146,7 @@ struct VideoPipelineIntegrationTests {
         }
         #expect(frames.count == 1)
         #expect(frames[0].timestamp == 1.0)
+        await source.stopCapture()
     }
 
     @Test("multi-camera mock produces per-label streams")

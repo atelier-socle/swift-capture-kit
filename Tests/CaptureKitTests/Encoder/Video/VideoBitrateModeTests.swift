@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoBitrateMode")
+@Suite("VideoBitrateMode", .timeLimit(.minutes(1)))
 struct VideoBitrateModeTests {
     @Test("all cases are available")
     func allCases() {

@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioDeviceInfo")
+@Suite("AudioDeviceInfo", .timeLimit(.minutes(1)))
 struct AudioDeviceInfoTests {
 
     @Test("init with all fields stores values")

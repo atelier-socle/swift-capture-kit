@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioEncoderProtocol")
+@Suite("AudioEncoderProtocol", .timeLimit(.minutes(1)))
 struct AudioEncoderProtocolTests {
 
     @Test("MockAudioEncoder conforms to AudioEncoderProtocol")

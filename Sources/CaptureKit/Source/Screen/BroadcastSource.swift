@@ -70,6 +70,8 @@ public actor BroadcastSource: VideoSource {
         self._frameStatisticsContinuation = continuation
     }
 
+    deinit { _frameStatisticsContinuation.finish() }
+
     /// Configures this source with the given video source configuration.
     ///
     /// - Parameter configuration: The desired video source configuration.
@@ -137,6 +139,7 @@ public actor BroadcastSource: VideoSource {
     public func stopCapture() async {
         await ipcChannel.disconnect()
         isCapturing = false
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

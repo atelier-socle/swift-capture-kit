@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileOutputConfiguration")
+@Suite("FileOutputConfiguration", .timeLimit(.minutes(1)))
 struct FileOutputConfigurationTests {
 
     @Test("initializes with URL and container")

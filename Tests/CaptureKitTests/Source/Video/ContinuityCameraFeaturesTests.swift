@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ContinuityCameraFeatures")
+@Suite("ContinuityCameraFeatures", .timeLimit(.minutes(1)))
 struct ContinuityCameraFeaturesTests {
 
     @Test("default init has all false")

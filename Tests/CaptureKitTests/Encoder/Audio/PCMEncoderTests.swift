@@ -6,7 +6,10 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PCMEncoder")
+@Suite(
+    "PCMEncoder",
+    .enabled(if: !TestEnvironment.isCI, "Real AudioToolbox encoder hangs without audio services on CI"),
+    .timeLimit(.minutes(1)))
 struct PCMEncoderTests {
     private func makeEncoder() -> PCMEncoder {
         PCMEncoder(configuration: .broadcast)

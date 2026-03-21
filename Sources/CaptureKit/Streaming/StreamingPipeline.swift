@@ -97,6 +97,14 @@ public actor StreamingPipeline {
         self.transport = transport
     }
 
+    deinit {
+        for task in producerTasks {
+            task.cancel()
+        }
+        consumerTask?.cancel()
+        muxContinuation?.finish()
+    }
+
     // MARK: - Public API
 
     /// Current pipeline statistics snapshot.
@@ -148,11 +156,23 @@ public actor StreamingPipeline {
         }
     }
 
-    /// Stop the pipeline: cancel producers, finish mux continuation,
-    /// cancel consumer, disconnect transport.
+    /// Stop the pipeline: stop sources, cancel producers, finish mux
+    /// continuation, cancel consumer, disconnect transport.
     public func stop() async {
         guard state == .streaming else { return }
         state = .stopped
+
+        // Stop sources first so their streams finish, unblocking
+        // any producer suspended on `for await`.
+        switch mode {
+        case .audioOnly(let source, _):
+            await source.stopCapture()
+        case .videoOnly(let source, _):
+            await source.stopCapture()
+        case .muxed(let videoSource, _, let audioSource, _):
+            await audioSource.stopCapture()
+            await videoSource.stopCapture()
+        }
 
         for task in producerTasks {
             task.cancel()

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("LineInSource Input Gain")
+@Suite("LineInSource Input Gain", .timeLimit(.minutes(1)))
 struct LineInSourceInputGainTests {
 
     private func makeDevice() -> AudioDeviceInfo {
@@ -26,6 +26,7 @@ struct LineInSourceInputGainTests {
         _ = try await source.startCapture()
         let gain = await engine.lastInputGain
         #expect(gain == 0.5)
+        await source.stopCapture()
     }
 
     @Test("input gain clamped in init")

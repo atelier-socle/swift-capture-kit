@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("StreamingTypes")
+@Suite("StreamingTypes", .timeLimit(.minutes(1)))
 struct StreamingTypesTests {
 
     @Test("QualityGrade CaseIterable count is five")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSession pipeline")
+@Suite("CaptureSession pipeline", .timeLimit(.minutes(1)))
 struct CaptureSessionPipelineTests {
 
     @Test("processAudioBuffer increments statistics")

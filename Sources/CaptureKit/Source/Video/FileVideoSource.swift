@@ -104,6 +104,8 @@ public actor FileVideoSource: VideoSource {
         self.fileReader = fileReader
     }
 
+    deinit { _frameStatisticsContinuation.finish() }
+
     /// Configures this source with the given video source configuration.
     ///
     /// - Parameter configuration: The desired video source configuration.
@@ -180,6 +182,7 @@ public actor FileVideoSource: VideoSource {
     public func stopCapture() async {
         await fileReader.stop()
         isCapturing = false
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

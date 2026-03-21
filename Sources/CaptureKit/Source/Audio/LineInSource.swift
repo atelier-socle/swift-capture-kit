@@ -104,6 +104,10 @@ public actor LineInSource: AudioSource {
         self.captureEngine = captureEngine
     }
 
+    deinit {
+        _audioLevelContinuation.finish()
+    }
+
     /// Configures this source with the given audio source configuration.
     ///
     /// The input gain is clamped to the range 0.0 to 1.0 during configuration.
@@ -190,6 +194,7 @@ public actor LineInSource: AudioSource {
     public func stopCapture() async {
         await captureEngine.stopCapture()
         isCapturing = false
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("H264EntropyMode")
+@Suite("H264EntropyMode", .timeLimit(.minutes(1)))
 struct H264EntropyModeTests {
     @Test("all cases are available")
     func allCases() {

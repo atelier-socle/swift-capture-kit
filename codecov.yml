@@ -31,3 +31,9 @@ ignore:
   - "Sources/CaptureKit/Output/File/AVAssetWriterEngine.swift"
   - "Sources/CaptureKit/Output/Utility/SystemAudioPlaybackEngine.swift"
   - "Sources/CaptureKit/Source/Discovery/DeviceDiscovery.swift"
+  # Real-time generator sources (Task.sleep loops, tested locally only)
+  - "Sources/CaptureKit/Source/Audio/ToneSource.swift"
+  - "Sources/CaptureKit/Source/Audio/SilenceSource.swift"
+  - "Sources/CaptureKit/Source/Video/BlackSource.swift"
+  - "Sources/CaptureKit/Source/Video/ColorSource.swift"
+  - "Sources/CaptureKit/Source/Video/TestPatternSource.swift"

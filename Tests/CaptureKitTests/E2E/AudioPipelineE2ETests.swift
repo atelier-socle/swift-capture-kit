@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Audio Pipeline E2E", .tags(.e2e))
+@Suite("Audio Pipeline E2E", .tags(.e2e), .timeLimit(.minutes(1)))
 struct AudioPipelineE2ETests {
 
     // MARK: - ToneSource → MockAudioEncoder → MockTransport
@@ -134,18 +134,16 @@ struct AudioPipelineE2ETests {
         try await tone.configure(config)
         let stream = try await tone.startCapture()
 
-        var bufferCount = 0
-        for await buffer in stream {
+        let buffers = await collectValues(from: stream, count: 5)
+        await tone.stopCapture()
+
+        #expect(buffers.count >= 5)
+        for buffer in buffers {
             #expect(buffer.data.count > 0)
             #expect(buffer.format.sampleRate == .rate48000)
             #expect(buffer.format.channelCount == 1)
             #expect(buffer.duration > 0)
-            bufferCount += 1
-            if bufferCount >= 5 { break }
         }
-
-        await tone.stopCapture()
-        #expect(bufferCount >= 5)
     }
 
     @Test("ToneSource buffers have no timestamp drift over 2 seconds")
@@ -158,20 +156,39 @@ struct AudioPipelineE2ETests {
         try await tone.configure(.default)
         let stream = try await tone.startCapture()
 
-        var firstTimestamp: TimeInterval?
-        var lastTimestamp: TimeInterval = 0
-        var totalDuration: TimeInterval = 0
+        struct DriftResult: Sendable {
+            var firstTimestamp: TimeInterval?
+            var lastTimestamp: TimeInterval = 0
+            var totalDuration: TimeInterval = 0
+        }
 
-        for await buffer in stream {
-            if firstTimestamp == nil {
-                firstTimestamp = buffer.timestamp
+        let result = await withTaskGroup(of: DriftResult?.self) { group in
+            group.addTask {
+                var r = DriftResult()
+                for await buffer in stream {
+                    if r.firstTimestamp == nil {
+                        r.firstTimestamp = buffer.timestamp
+                    }
+                    r.lastTimestamp = buffer.timestamp
+                    r.totalDuration += buffer.duration
+                    if r.totalDuration >= 0.5 { break }
+                }
+                return r
             }
-            lastTimestamp = buffer.timestamp
-            totalDuration += buffer.duration
-            if totalDuration >= 0.5 { break }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(10))
+                return nil
+            }
+            let value = await group.next() ?? nil
+            group.cancelAll()
+            return value
         }
 
         await tone.stopCapture()
+
+        let firstTimestamp = result?.firstTimestamp
+        let lastTimestamp = result?.lastTimestamp ?? 0
+        let totalDuration = result?.totalDuration ?? 0
 
         guard let first = firstTimestamp else {
             Issue.record("No buffers received")

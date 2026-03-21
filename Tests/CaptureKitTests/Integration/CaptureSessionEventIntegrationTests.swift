@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSession Events")
+@Suite("CaptureSession Events", .timeLimit(.minutes(1)))
 struct CaptureSessionEventIntegrationTests {
 
     @Test("events stream provides state changes")
@@ -17,14 +17,11 @@ struct CaptureSessionEventIntegrationTests {
         let eventStream = await session.events
         try await session.start()
 
-        var hasStateChange = false
-        for await event in eventStream {
-            if case .stateChanged = event {
-                hasStateChange = true
-                break
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .stateChanged = event { return true }
+            return false
         }
-        #expect(hasStateChange)
+        #expect(event != nil)
         await session.stop()
     }
 
@@ -35,16 +32,11 @@ struct CaptureSessionEventIntegrationTests {
         try await session.addOutput(
             MockCaptureOutput(outputID: "evt-out"))
 
-        var hasOutputAdded = false
-        for await event in eventStream {
-            if case .outputAdded(let id) = event {
-                if id == "evt-out" {
-                    hasOutputAdded = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .outputAdded("evt-out") = event { return true }
+            return false
         }
-        #expect(hasOutputAdded)
+        #expect(event != nil)
     }
 
     @Test("events stream provides bitrate changes")
@@ -56,14 +48,11 @@ struct CaptureSessionEventIntegrationTests {
         try await session.start()
         try await session.updateVideoBitrate(4_000_000)
 
-        var hasBitrateChange = false
-        for await event in eventStream {
-            if case .bitrateChanged = event {
-                hasBitrateChange = true
-                break
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .bitrateChanged = event { return true }
+            return false
         }
-        #expect(hasBitrateChange)
+        #expect(event != nil)
         await session.stop()
     }
 
@@ -77,14 +66,11 @@ struct CaptureSessionEventIntegrationTests {
         try await session.switchAudioSource(
             MockAudioSource(sourceID: "ready"))
 
-        var hasSourceReady = false
-        for await event in eventStream {
-            if case .audioSourceReady = event {
-                hasSourceReady = true
-                break
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .audioSourceReady = event { return true }
+            return false
         }
-        #expect(hasSourceReady)
+        #expect(event != nil)
         await session.stop()
     }
 
@@ -98,14 +84,16 @@ struct CaptureSessionEventIntegrationTests {
         await session.pause()
         try await session.resume()
 
-        var states: [CaptureSessionState] = []
-        for await event in eventStream {
-            if case .stateChanged(let state) = event {
-                states.append(state)
+        let events = await collectEvents(from: eventStream) { collected in
+            let states = collected.compactMap { event -> CaptureSessionState? in
+                if case .stateChanged(let state) = event { return state }
+                return nil
             }
-            if states.contains(.capturing) && states.count >= 3 {
-                break
-            }
+            return states.contains(.capturing) && states.count >= 3
+        }
+        let states = events.compactMap { event -> CaptureSessionState? in
+            if case .stateChanged(let state) = event { return state }
+            return nil
         }
         #expect(states.contains(.paused))
         await session.stop()
@@ -120,14 +108,16 @@ struct CaptureSessionEventIntegrationTests {
         try await session.start()
         await session.stop()
 
-        var stateOrder: [CaptureSessionState] = []
-        for await event in eventStream {
-            if case .stateChanged(let state) = event {
-                stateOrder.append(state)
+        let events = await collectEvents(from: eventStream) { collected in
+            let states = collected.compactMap { event -> CaptureSessionState? in
+                if case .stateChanged(let state) = event { return state }
+                return nil
             }
-            if stateOrder.contains(.idle) && stateOrder.count >= 4 {
-                break
-            }
+            return states.contains(.idle) && states.count >= 4
+        }
+        let stateOrder = events.compactMap { event -> CaptureSessionState? in
+            if case .stateChanged(let state) = event { return state }
+            return nil
         }
         // Should see: starting, capturing, stopping, idle
         #expect(stateOrder.count >= 4)
@@ -158,18 +148,19 @@ struct CaptureSessionEventIntegrationTests {
             MockCaptureOutput(outputID: "b"))
         await session.removeOutput("a")
 
-        var addedIDs: [String] = []
-        var removedIDs: [String] = []
-        for await event in eventStream {
-            switch event {
-            case .outputAdded(let id):
-                addedIDs.append(id)
-            case .outputRemoved(let id):
-                removedIDs.append(id)
-            default:
-                break
+        let events = await collectEvents(from: eventStream) { collected in
+            collected.contains { event in
+                if case .outputRemoved = event { return true }
+                return false
             }
-            if !removedIDs.isEmpty { break }
+        }
+        let addedIDs = events.compactMap { event -> String? in
+            if case .outputAdded(let id) = event { return id }
+            return nil
+        }
+        let removedIDs = events.compactMap { event -> String? in
+            if case .outputRemoved(let id) = event { return id }
+            return nil
         }
         #expect(addedIDs.contains("a"))
         #expect(addedIDs.contains("b"))

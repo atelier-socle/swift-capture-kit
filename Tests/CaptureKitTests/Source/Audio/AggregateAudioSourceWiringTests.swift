@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AggregateAudioSource wiring")
+@Suite("AggregateAudioSource wiring", .timeLimit(.minutes(1)))
 struct AggregateAudioSourceWiringTests {
 
     private func makeDevices(count: Int) -> [AudioDeviceInfo] {
@@ -83,6 +83,7 @@ struct AggregateAudioSourceWiringTests {
         await #expect(throws: CaptureError.self) {
             try await source.configure(.default)
         }
+        await source.stopCapture()
     }
 
     @Test("stopCapture sets isCapturing to false")

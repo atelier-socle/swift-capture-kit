@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("TeeOutput")
+@Suite("TeeOutput", .timeLimit(.minutes(1)))
 struct TeeOutputTests {
 
     @Test("has tee output type")

@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CapturePreset")
+@Suite("CapturePreset", .timeLimit(.minutes(1)))
 struct CapturePresetTests {
 
     // MARK: - Streaming

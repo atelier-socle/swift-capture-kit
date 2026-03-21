@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AACProfile")
+@Suite("AACProfile", .timeLimit(.minutes(1)))
 struct AACProfileTests {
     @Test("all cases are available")
     func allCasesAvailable() {

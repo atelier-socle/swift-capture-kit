@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("HEVCEncoderConfiguration")
+@Suite("HEVCEncoderConfiguration", .timeLimit(.minutes(1)))
 struct HEVCEncoderConfigurationTests {
     @Test("default values")
     func defaultValues() {

@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CinematicFocusSubject")
+@Suite("CinematicFocusSubject", .timeLimit(.minutes(1)))
 struct CinematicFocusSubjectTests {
 
     @Test("automatic case equality")

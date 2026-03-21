@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSession Dynamic Control")
+@Suite("CaptureSession Dynamic Control", .timeLimit(.minutes(1)))
 struct CaptureSessionDynamicControlTests {
 
     @Test("updateVideoBitrate calls encoder updateBitrate")
@@ -120,16 +120,11 @@ struct CaptureSessionDynamicControlTests {
         try await session.start()
         try await session.updateAudioBitrate(256_000)
 
-        var found = false
-        for await event in eventStream {
-            if case .bitrateChanged(let audio, _) = event {
-                if audio == 256_000 {
-                    found = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .bitrateChanged(256_000, _) = event { return true }
+            return false
         }
-        #expect(found)
+        #expect(event != nil)
         await session.stop()
     }
 
@@ -142,16 +137,11 @@ struct CaptureSessionDynamicControlTests {
         try await session.start()
         try await session.updateVideoBitrate(8_000_000)
 
-        var found = false
-        for await event in eventStream {
-            if case .bitrateChanged(_, let video) = event {
-                if video == 8_000_000 {
-                    found = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .bitrateChanged(_, 8_000_000) = event { return true }
+            return false
         }
-        #expect(found)
+        #expect(event != nil)
         await session.stop()
     }
 

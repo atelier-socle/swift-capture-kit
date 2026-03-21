@@ -122,6 +122,8 @@ public actor CameraSource: VideoSource {
         self.captureEngine = captureEngine
     }
 
+    deinit { _frameStatisticsContinuation.finish() }
+
     /// Configures this source with the given video source configuration.
     ///
     /// - Parameter configuration: The desired video source configuration.
@@ -200,6 +202,7 @@ public actor CameraSource: VideoSource {
     public func stopCapture() async {
         await captureEngine.stopCapture()
         isCapturing = false
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

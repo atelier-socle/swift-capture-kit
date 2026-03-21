@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoResolution")
+@Suite("VideoResolution", .timeLimit(.minutes(1)))
 struct VideoResolutionTests {
 
     @Test("width and height for all named cases")

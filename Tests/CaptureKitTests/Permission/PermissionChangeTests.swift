@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PermissionChange")
+@Suite("PermissionChange", .timeLimit(.minutes(1)))
 struct PermissionChangeTests {
 
     @Test("stores type and statuses")

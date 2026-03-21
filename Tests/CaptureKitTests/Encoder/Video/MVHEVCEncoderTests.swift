@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("MVHEVCEncoder")
+@Suite("MVHEVCEncoder", .timeLimit(.minutes(1)))
 struct MVHEVCEncoderTests {
 
     private func makeEncoder() -> MVHEVCEncoder {

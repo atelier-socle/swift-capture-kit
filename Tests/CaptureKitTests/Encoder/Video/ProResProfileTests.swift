@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ProResProfile")
+@Suite("ProResProfile", .timeLimit(.minutes(1)))
 struct ProResProfileTests {
     @Test("all 6 profiles exist")
     func allCases() {

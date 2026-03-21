@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CapturePermission")
+@Suite("CapturePermission", .timeLimit(.minutes(1)))
 struct CapturePermissionTests {
 
     @Test("all 3 cases exist")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CameraSource")
+@Suite("CameraSource", .timeLimit(.minutes(1)))
 struct CameraSourceTests {
 
     @Test("has builtInCamera source type")
@@ -76,6 +76,7 @@ struct CameraSourceTests {
         await #expect(throws: CaptureError.self) {
             try await source.configure(.default)
         }
+        await source.stopCapture()
     }
 
     @Test("startCapture sets isCapturing")
@@ -86,6 +87,7 @@ struct CameraSourceTests {
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)
+        await source.stopCapture()
     }
 
     @Test("stopCapture sets isCapturing to false")

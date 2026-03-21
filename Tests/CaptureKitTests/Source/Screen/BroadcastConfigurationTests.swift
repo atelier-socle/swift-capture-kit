@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BroadcastConfiguration")
+@Suite("BroadcastConfiguration", .timeLimit(.minutes(1)))
 struct BroadcastConfigurationTests {
 
     @Test("appGroupID storage")

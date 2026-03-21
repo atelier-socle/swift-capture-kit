@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileContainer")
+@Suite("FileContainer", .timeLimit(.minutes(1)))
 struct FileContainerTests {
 
     @Test("all 7 containers exist")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoEncoderPreset")
+@Suite("VideoEncoderPreset", .timeLimit(.minutes(1)))
 struct VideoEncoderPresetTests {
     @Test("all cases exist in CaseIterable")
     func allCases() {

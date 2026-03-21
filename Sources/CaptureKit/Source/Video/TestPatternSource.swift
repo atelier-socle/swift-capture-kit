@@ -41,6 +41,9 @@ public actor TestPatternSource: VideoSource {
     private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
     private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
 
+    /// The active stream continuation, stored so stopCapture() can finish it.
+    private var _streamContinuation: AsyncStream<VideoFrame>.Continuation?
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -76,6 +79,11 @@ public actor TestPatternSource: VideoSource {
         )
     }
 
+    deinit {
+        _streamContinuation?.finish()
+        _frameStatisticsContinuation.finish()
+    }
+
     /// Configures this source with the given video source configuration.
     ///
     /// - Parameter configuration: The desired video source configuration.
@@ -109,41 +117,47 @@ public actor TestPatternSource: VideoSource {
         let analyzer = statsAnalyzer
         let statsContinuation = _frameStatisticsContinuation
 
-        return AsyncStream { continuation in
-            let task = Task { @concurrent in
-                var sequenceNumber: Int64 = 0
-                let frameData = TestPatternSource.generatePattern(
-                    pattern, width: width, height: height
+        let (stream, continuation) = AsyncStream.makeStream(of: VideoFrame.self)
+        _streamContinuation = continuation
+
+        let task = Task { @concurrent in
+            var sequenceNumber: Int64 = 0
+            let frameData = TestPatternSource.generatePattern(
+                pattern, width: width, height: height
+            )
+
+            while !Task.isCancelled {
+                let frame = VideoFrame(
+                    data: frameData,
+                    format: format,
+                    timestamp: TimeInterval(sequenceNumber) * frameDuration,
+                    isKeyFrame: sequenceNumber % 30 == 0,
+                    sequenceNumber: sequenceNumber
                 )
-
-                while !Task.isCancelled {
-                    let frame = VideoFrame(
-                        data: frameData,
-                        format: format,
-                        timestamp: TimeInterval(sequenceNumber) * frameDuration,
-                        isKeyFrame: sequenceNumber % 30 == 0,
-                        sequenceNumber: sequenceNumber
-                    )
-                    continuation.yield(frame)
-                    await analyzer.processFrame(frame)
-                    if let latest = await analyzer.latestMetrics {
-                        statsContinuation.yield(latest)
-                    }
-                    sequenceNumber += 1
-                    try? await Task.sleep(for: .seconds(frameDuration))
+                continuation.yield(frame)
+                await analyzer.processFrame(frame)
+                if let latest = await analyzer.latestMetrics {
+                    statsContinuation.yield(latest)
                 }
-                continuation.finish()
+                sequenceNumber += 1
+                try? await Task.sleep(for: .seconds(frameDuration))
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
+            continuation.finish()
         }
+
+        continuation.onTermination = { _ in
+            task.cancel()
+        }
+
+        return stream
     }
 
     /// Stops generating test pattern video frames.
     public func stopCapture() async {
         isCapturing = false
+        _streamContinuation?.finish()
+        _streamContinuation = nil
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

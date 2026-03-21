@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("SystemAudioCaptureMode")
+@Suite("SystemAudioCaptureMode", .timeLimit(.minutes(1)))
 struct SystemAudioCaptureModeTests {
 
     @Test("allApps equality")

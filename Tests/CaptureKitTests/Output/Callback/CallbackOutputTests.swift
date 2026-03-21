@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CallbackOutput")
+@Suite("CallbackOutput", .timeLimit(.minutes(1)))
 struct CallbackOutputTests {
 
     @Test("has callback output type")

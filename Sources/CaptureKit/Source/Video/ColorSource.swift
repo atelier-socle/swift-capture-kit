@@ -40,6 +40,9 @@ public actor ColorSource: VideoSource {
     private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
     private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
 
+    /// The active stream continuation, stored so stopCapture() can finish it.
+    private var _streamContinuation: AsyncStream<VideoFrame>.Continuation?
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -73,6 +76,11 @@ public actor ColorSource: VideoSource {
             exposureMode: .locked,
             whiteBalanceMode: .locked
         )
+    }
+
+    deinit {
+        _streamContinuation?.finish()
+        _frameStatisticsContinuation.finish()
     }
 
     /// Configures this source with the given video source configuration.
@@ -110,51 +118,57 @@ public actor ColorSource: VideoSource {
         let analyzer = statsAnalyzer
         let statsContinuation = _frameStatisticsContinuation
 
-        return AsyncStream { continuation in
-            let task = Task { @concurrent in
-                var sequenceNumber: Int64 = 0
-                let pixel = ColorSource.makePixel(from: color)
+        let (stream, continuation) = AsyncStream.makeStream(of: VideoFrame.self)
+        _streamContinuation = continuation
 
-                while !Task.isCancelled {
-                    var data = Data(count: frameSize)
-                    data.withUnsafeMutableBytes { rawBuffer in
-                        let buffer = rawBuffer.bindMemory(to: UInt8.self)
-                        for i in 0..<pixelCount {
-                            let offset = i * 4
-                            buffer[offset] = pixel.b
-                            buffer[offset + 1] = pixel.g
-                            buffer[offset + 2] = pixel.r
-                            buffer[offset + 3] = pixel.a
-                        }
-                    }
+        let task = Task { @concurrent in
+            var sequenceNumber: Int64 = 0
+            let pixel = ColorSource.makePixel(from: color)
 
-                    let frame = VideoFrame(
-                        data: data,
-                        format: format,
-                        timestamp: TimeInterval(sequenceNumber) * frameDuration,
-                        isKeyFrame: sequenceNumber % 30 == 0,
-                        sequenceNumber: sequenceNumber
-                    )
-                    continuation.yield(frame)
-                    await analyzer.processFrame(frame)
-                    if let latest = await analyzer.latestMetrics {
-                        statsContinuation.yield(latest)
+            while !Task.isCancelled {
+                var data = Data(count: frameSize)
+                data.withUnsafeMutableBytes { rawBuffer in
+                    let buffer = rawBuffer.bindMemory(to: UInt8.self)
+                    for i in 0..<pixelCount {
+                        let offset = i * 4
+                        buffer[offset] = pixel.b
+                        buffer[offset + 1] = pixel.g
+                        buffer[offset + 2] = pixel.r
+                        buffer[offset + 3] = pixel.a
                     }
-                    sequenceNumber += 1
-                    try? await Task.sleep(for: .seconds(frameDuration))
                 }
-                continuation.finish()
-            }
 
-            continuation.onTermination = { _ in
-                task.cancel()
+                let frame = VideoFrame(
+                    data: data,
+                    format: format,
+                    timestamp: TimeInterval(sequenceNumber) * frameDuration,
+                    isKeyFrame: sequenceNumber % 30 == 0,
+                    sequenceNumber: sequenceNumber
+                )
+                continuation.yield(frame)
+                await analyzer.processFrame(frame)
+                if let latest = await analyzer.latestMetrics {
+                    statsContinuation.yield(latest)
+                }
+                sequenceNumber += 1
+                try? await Task.sleep(for: .seconds(frameDuration))
             }
+            continuation.finish()
         }
+
+        continuation.onTermination = { _ in
+            task.cancel()
+        }
+
+        return stream
     }
 
     /// Stops generating colored video frames.
     public func stopCapture() async {
         isCapturing = false
+        _streamContinuation?.finish()
+        _streamContinuation = nil
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

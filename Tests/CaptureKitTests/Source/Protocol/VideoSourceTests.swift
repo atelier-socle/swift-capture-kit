@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoSource")
+@Suite("VideoSource", .timeLimit(.minutes(1)))
 struct VideoSourceTests {
 
     @Test("MockVideoSource conforms to VideoSource protocol")

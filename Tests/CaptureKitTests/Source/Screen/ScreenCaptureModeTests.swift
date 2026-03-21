@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ScreenCaptureMode")
+@Suite("ScreenCaptureMode", .timeLimit(.minutes(1)))
 struct ScreenCaptureModeTests {
 
     @Test("screenCaptureKit mode with display target")

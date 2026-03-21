@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("HDRMode")
+@Suite("HDRMode", .timeLimit(.minutes(1)))
 struct HDRModeTests {
     @Test("all cases are available")
     func allCases() {

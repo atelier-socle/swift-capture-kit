@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureOutput")
+@Suite("CaptureOutput", .timeLimit(.minutes(1)))
 struct CaptureOutputTests {
 
     @Test("MockCaptureOutput conforms to CaptureOutput protocol")

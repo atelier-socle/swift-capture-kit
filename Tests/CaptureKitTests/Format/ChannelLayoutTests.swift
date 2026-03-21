@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ChannelLayout")
+@Suite("ChannelLayout", .timeLimit(.minutes(1)))
 struct ChannelLayoutTests {
 
     @Test("CaseIterable count is 13")

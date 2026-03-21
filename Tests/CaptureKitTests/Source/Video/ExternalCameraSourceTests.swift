@@ -10,7 +10,7 @@ private func makeDevice() -> VideoDeviceInfo {
     VideoDeviceInfo(id: "ext-1", name: "USB Camera", connectionType: .usb)
 }
 
-@Suite("ExternalCameraSource")
+@Suite("ExternalCameraSource", .timeLimit(.minutes(1)))
 struct ExternalCameraSourceTests {
 
     @Test("has externalCamera source type")
@@ -69,6 +69,7 @@ struct ExternalCameraSourceTests {
         _ = try await source.startCapture()
         let capturing = await source.isCapturing
         #expect(capturing == true)
+        await source.stopCapture()
     }
 
     @Test("stopCapture sets isCapturing to false")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("StreamConfiguration")
+@Suite("StreamConfiguration", .timeLimit(.minutes(1)))
 struct StreamConfigurationTests {
 
     @Test("video configuration stores codec and parameter sets")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoCaptureProviding new protocol methods")
+@Suite("VideoCaptureProviding new protocol methods", .timeLimit(.minutes(1)))
 struct VideoCaptureProvidingTests {
 
     @Test("setDepthDataDelivery tracks enabled state")

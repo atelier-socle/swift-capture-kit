@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BroadcastControlMessage")
+@Suite("BroadcastControlMessage", .timeLimit(.minutes(1)))
 struct BroadcastControlMessageTests {
 
     @Test("CaseIterable count is 3")

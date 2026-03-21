@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSessionConfiguration")
+@Suite("CaptureSessionConfiguration", .timeLimit(.minutes(1)))
 struct CaptureSessionConfigurationTests {
 
     @Test("default preset values")

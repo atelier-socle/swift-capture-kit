@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioSource")
+@Suite("AudioSource", .timeLimit(.minutes(1)))
 struct AudioSourceTests {
 
     @Test("MockAudioSource conforms to AudioSource protocol")

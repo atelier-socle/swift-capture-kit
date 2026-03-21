@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("DynamicRange")
+@Suite("DynamicRange", .timeLimit(.minutes(1)))
 struct DynamicRangeTests {
 
     @Test("CaseIterable count is 5")

@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileRotationNaming")
+@Suite("FileRotationNaming", .timeLimit(.minutes(1)))
 struct FileRotationNamingTests {
 
     @Test("all 3 naming patterns exist")

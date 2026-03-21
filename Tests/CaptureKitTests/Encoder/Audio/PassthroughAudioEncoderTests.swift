@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PassthroughAudioEncoder")
+@Suite("PassthroughAudioEncoder", .timeLimit(.minutes(1)))
 struct PassthroughAudioEncoderTests {
 
     @Test("configure does not throw")

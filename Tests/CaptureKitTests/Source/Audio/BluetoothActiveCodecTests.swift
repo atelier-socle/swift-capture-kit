@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BluetoothAudioSource Active Codec")
+@Suite("BluetoothAudioSource Active Codec", .timeLimit(.minutes(1)))
 struct BluetoothActiveCodecTests {
 
     private func makeDevice() -> AudioDeviceInfo {
@@ -36,6 +36,7 @@ struct BluetoothActiveCodecTests {
         _ = try await source.startCapture()
         let codec = await source.activeCodec
         #expect(codec == BluetoothAudioCodec.aac)
+        await source.stopCapture()
     }
 
     @Test("activeCodec cleared on stop")

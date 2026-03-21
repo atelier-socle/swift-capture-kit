@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ScreenCaptureKitConfiguration")
+@Suite("ScreenCaptureKitConfiguration", .timeLimit(.minutes(1)))
 struct ScreenCaptureKitConfigurationTests {
 
     @Test("default preset values")

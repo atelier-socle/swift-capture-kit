@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CinematicCameraSource F-Number Metadata")
+@Suite("CinematicCameraSource F-Number Metadata", .timeLimit(.minutes(1)))
 struct CinematicCameraFNumberMetadataTests {
 
     @Test("fNumber included in frame metadata")
@@ -22,6 +22,7 @@ struct CinematicCameraFNumberMetadataTests {
             #expect(frame.metadata["fNumber"] == "5.6")
             break
         }
+        await source.stopCapture()
     }
 
     @Test("default fNumber is 2.8")

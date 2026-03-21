@@ -7,7 +7,7 @@ import Testing
 @testable import CaptureKit
 
 #if os(macOS)
-    @Suite("MP3EncoderConfiguration")
+    @Suite("MP3EncoderConfiguration", .timeLimit(.minutes(1)))
     struct MP3EncoderConfigurationTests {
         @Test("standard preset values")
         func standardPreset() {

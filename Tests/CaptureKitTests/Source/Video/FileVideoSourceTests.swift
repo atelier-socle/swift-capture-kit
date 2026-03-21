@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileVideoSource")
+@Suite("FileVideoSource", .timeLimit(.minutes(1)))
 struct FileVideoSourceTests {
 
     @Test("has file source type")

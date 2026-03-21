@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("SilenceSource")
+@Suite("SilenceSource", .timeLimit(.minutes(1)))
 struct SilenceSourceTests {
 
     @Test("has generator source type")
@@ -138,11 +138,7 @@ struct SilenceSourceTests {
                 preferredBufferDuration: 0.01
             ))
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -162,11 +158,7 @@ struct SilenceSourceTests {
         )
         let source = SilenceSource(format: config)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let format = try #require(firstBuffer?.format)
@@ -187,11 +179,7 @@ struct SilenceSourceTests {
         )
         let source = SilenceSource(format: config)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let duration = try #require(firstBuffer?.duration)
@@ -210,11 +198,7 @@ struct SilenceSourceTests {
                 preferredBufferDuration: 0.01
             ))
         let stream = try await source.startCapture()
-        var buffers: [AudioBuffer] = []
-        for await buffer in stream {
-            buffers.append(buffer)
-            if buffers.count >= 2 { break }
-        }
+        let buffers = await collectValues(from: stream, count: 2)
         await source.stopCapture()
 
         #expect(buffers.count == 2)

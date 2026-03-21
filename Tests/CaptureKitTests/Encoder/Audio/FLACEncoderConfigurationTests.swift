@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FLACEncoderConfiguration")
+@Suite("FLACEncoderConfiguration", .timeLimit(.minutes(1)))
 struct FLACEncoderConfigurationTests {
     @Test("default compression level is 5")
     func defaultCompressionLevel() {

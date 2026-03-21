@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ProResEncoder Apple Silicon")
+@Suite("ProResEncoder Apple Silicon", .timeLimit(.minutes(1)))
 struct ProResEncoderAppleSiliconTests {
 
     @Test("isHardwareAccelerated is true")

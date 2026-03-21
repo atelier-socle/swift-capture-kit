@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ProResEncoderConfiguration")
+@Suite("ProResEncoderConfiguration", .timeLimit(.minutes(1)))
 struct ProResEncoderConfigurationTests {
     @Test("default values")
     func defaultValues() {

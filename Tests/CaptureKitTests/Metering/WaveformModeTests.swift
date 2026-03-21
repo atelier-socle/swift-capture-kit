@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("WaveformMode")
+@Suite("WaveformMode", .timeLimit(.minutes(1)))
 struct WaveformModeTests {
 
     @Test("simple mode stores barCount")

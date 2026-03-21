@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BluetoothAudioSource")
+@Suite("BluetoothAudioSource", .timeLimit(.minutes(1)))
 struct BluetoothAudioSourceTests {
 
     private func makeTestDevice(id: String = "test-device") -> AudioDeviceInfo {
@@ -77,6 +77,7 @@ struct BluetoothAudioSourceTests {
         await #expect(throws: CaptureError.self) {
             _ = try await source.startCapture()
         }
+        await source.stopCapture()
     }
 
     @Test("stopCapture sets isCapturing to false")

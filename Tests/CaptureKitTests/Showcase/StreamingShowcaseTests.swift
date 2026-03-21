@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Streaming Showcase", .tags(.showcase))
+@Suite("Streaming Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct StreamingShowcaseTests {
 
     // MARK: - MockStreamingTransport

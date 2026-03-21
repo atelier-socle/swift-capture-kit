@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CinematicCameraSource")
+@Suite("CinematicCameraSource", .timeLimit(.minutes(1)))
 struct CinematicCameraSourceTests {
 
     @Test("has cinematicCamera source type")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AV1Encoder")
+@Suite("AV1Encoder", .timeLimit(.minutes(1)))
 struct AV1EncoderTests {
 
     private func makeEncoder() -> AV1Encoder {

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ToneSource")
+@Suite("ToneSource", .timeLimit(.minutes(1)))
 struct ToneSourceTests {
 
     private static let shortBufferConfig = AudioSourceConfiguration(
@@ -67,11 +67,7 @@ struct ToneSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ToneSource(format: Self.shortBufferConfig)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -84,11 +80,7 @@ struct ToneSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ToneSource(waveform: .sine, frequency: 1000.0, amplitude: 0.5, format: Self.shortBufferConfig)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -104,11 +96,7 @@ struct ToneSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ToneSource(waveform: .square, frequency: 1000.0, amplitude: 1.0, format: Self.shortBufferConfig)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -124,11 +112,7 @@ struct ToneSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ToneSource(waveform: .sine, frequency: 440.0, amplitude: 0.0, format: Self.shortBufferConfig)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -151,11 +135,7 @@ struct ToneSourceTests {
         )
         let source = ToneSource(format: config)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -170,13 +150,9 @@ struct ToneSourceTests {
         for waveform in ToneWaveform.allCases {
             let source = ToneSource(waveform: waveform, frequency: 440.0, amplitude: 0.5, format: Self.shortBufferConfig)
             let stream = try await source.startCapture()
-            var gotBuffer = false
-            for await _ in stream {
-                gotBuffer = true
-                break
-            }
+            let buffer = await firstValue(from: stream)
             await source.stopCapture()
-            #expect(gotBuffer, "Waveform \(waveform.rawValue) did not produce a buffer")
+            #expect(buffer != nil, "Waveform \(waveform.rawValue) did not produce a buffer")
         }
     }
 
@@ -185,11 +161,7 @@ struct ToneSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ToneSource(waveform: .ebur128Calibration, frequency: 1000.0, amplitude: 1.0, format: Self.shortBufferConfig)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -251,11 +223,7 @@ struct ToneSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ToneSource(waveform: .whiteNoise, frequency: 440.0, amplitude: 1.0, format: Self.shortBufferConfig)
         let stream = try await source.startCapture()
-        var firstBuffer: AudioBuffer?
-        for await buffer in stream {
-            firstBuffer = buffer
-            break
-        }
+        let firstBuffer = await firstValue(from: stream)
         await source.stopCapture()
 
         let data = try #require(firstBuffer?.data)
@@ -282,11 +250,7 @@ struct ToneSourceTests {
         guard #available(macOS 14.0, iOS 17.0, visionOS 1.0, *) else { return }
         let source = ToneSource(format: Self.shortBufferConfig)
         let stream = try await source.startCapture()
-        var buffers: [AudioBuffer] = []
-        for await buffer in stream {
-            buffers.append(buffer)
-            if buffers.count >= 2 { break }
-        }
+        let buffers = await collectValues(from: stream, count: 2)
         await source.stopCapture()
 
         #expect(buffers.count == 2)

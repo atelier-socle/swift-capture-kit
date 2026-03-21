@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CinematicCameraSource focus wiring")
+@Suite("CinematicCameraSource focus wiring", .timeLimit(.minutes(1)))
 struct CinematicCameraSourceFocusTests {
 
     @Test("startCapture with point focus calls engine focus point")
@@ -20,6 +20,7 @@ struct CinematicCameraSourceFocusTests {
         #expect(point != nil)
         #expect(point?.x == 0.3)
         #expect(point?.y == 0.7)
+        await source.stopCapture()
     }
 
     @Test("startCapture with automatic focus sets continuous mode")
@@ -30,6 +31,7 @@ struct CinematicCameraSourceFocusTests {
         _ = try await source.startCapture()
         let mode = await engine.lastFocusMode
         #expect(mode == .continuousAutoFocus)
+        await source.stopCapture()
     }
 
     @Test("rackFocus to point updates engine focus point")
@@ -41,6 +43,7 @@ struct CinematicCameraSourceFocusTests {
         await source.rackFocus(to: .point(x: 0.5, y: 0.5), duration: 0.3)
         let subject = await source.focusSubject
         #expect(subject == .point(x: 0.5, y: 0.5))
+        await source.stopCapture()
     }
 
     @Test("rackFocus to automatic sets continuous auto focus on engine")
@@ -52,6 +55,7 @@ struct CinematicCameraSourceFocusTests {
         await source.rackFocus(to: .automatic, duration: 0.5)
         let mode = await engine.lastFocusMode
         #expect(mode == .continuousAutoFocus)
+        await source.stopCapture()
     }
 
     @Test("fNumber clamped to valid range")

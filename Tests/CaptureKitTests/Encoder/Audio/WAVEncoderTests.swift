@@ -6,7 +6,10 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("WAVEncoder")
+@Suite(
+    "WAVEncoder",
+    .enabled(if: !TestEnvironment.isCI, "Real AudioToolbox encoder hangs without audio services on CI"),
+    .timeLimit(.minutes(1)))
 struct WAVEncoderTests {
     private func makeEncoder() -> WAVEncoder {
         WAVEncoder(configuration: .cdQuality)

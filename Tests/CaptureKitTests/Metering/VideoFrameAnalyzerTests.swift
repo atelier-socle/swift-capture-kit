@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoFrameAnalyzer")
+@Suite("VideoFrameAnalyzer", .timeLimit(.minutes(1)))
 struct VideoFrameAnalyzerTests {
 
     private func makeFrame(
@@ -35,6 +35,7 @@ struct VideoFrameAnalyzerTests {
         let analyzer = VideoFrameAnalyzer()
         await analyzer.start()
         #expect(await analyzer.isActive == true)
+        await analyzer.stop()
     }
 
     @Test("stop sets isActive false")
@@ -66,6 +67,7 @@ struct VideoFrameAnalyzerTests {
         let metrics = await analyzer.latestMetrics
         #expect(metrics != nil)
         #expect(metrics?.timestamp == 0.5)
+        await analyzer.stop()
     }
 
     @Test("frame count increments")
@@ -77,6 +79,7 @@ struct VideoFrameAnalyzerTests {
         await analyzer.processFrame(makeFrame())
         let metrics = await analyzer.latestMetrics
         #expect(metrics?.capturedFrameRate ?? 0 > 0)
+        await analyzer.stop()
     }
 
     @Test("reportDroppedFrame increments count")
@@ -87,6 +90,7 @@ struct VideoFrameAnalyzerTests {
         await analyzer.processFrame(makeFrame())
         let metrics = await analyzer.latestMetrics
         #expect(metrics?.droppedFrames == 1)
+        await analyzer.stop()
     }
 
     @Test("latestMetrics is nil initially")

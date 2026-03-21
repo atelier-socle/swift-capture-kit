@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("MediaBuffer")
+@Suite("MediaBuffer", .timeLimit(.minutes(1)))
 struct MediaBufferTests {
 
     @Test("AudioBuffer init and properties")

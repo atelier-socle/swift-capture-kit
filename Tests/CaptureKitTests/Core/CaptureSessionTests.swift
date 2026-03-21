@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSession")
+@Suite("CaptureSession", .timeLimit(.minutes(1)))
 struct CaptureSessionTests {
 
     // MARK: - Initialization

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("HEVCProfile")
+@Suite("HEVCProfile", .timeLimit(.minutes(1)))
 struct HEVCProfileTests {
     @Test("all cases are available")
     func allCases() {

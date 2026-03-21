@@ -22,6 +22,13 @@ actor SystemAudioCaptureEngine: AudioCaptureProviding {
 
     var isCapturing: Bool { _isCapturing }
 
+    deinit {
+        #if canImport(AVFAudio)
+            audioEngine?.inputNode.removeTap(onBus: 0)
+            audioEngine?.stop()
+        #endif
+    }
+
     func startCapture(
         configuration: AudioSourceConfiguration,
         deviceID: String?

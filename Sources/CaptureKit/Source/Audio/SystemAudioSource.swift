@@ -112,6 +112,8 @@ public actor SystemAudioSource: AudioSource {
         self.audioProvider = audioProvider
     }
 
+    deinit { _audioLevelContinuation.finish() }
+
     /// Configures this source with the given audio source configuration.
     ///
     /// - Parameter configuration: The desired audio source configuration.
@@ -193,6 +195,7 @@ public actor SystemAudioSource: AudioSource {
     public func stopCapture() async {
         await audioProvider.stopCapture()
         isCapturing = false
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

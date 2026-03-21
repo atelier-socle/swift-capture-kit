@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ScreenCaptureSource")
+@Suite("ScreenCaptureSource", .timeLimit(.minutes(1)))
 struct ScreenCaptureSourceTests {
 
     @Test("has screenCapture source type")

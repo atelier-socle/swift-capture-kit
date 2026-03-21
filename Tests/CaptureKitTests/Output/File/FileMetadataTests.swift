@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FileMetadata")
+@Suite("FileMetadata", .timeLimit(.minutes(1)))
 struct FileMetadataTests {
 
     @Test("default values are nil and empty")

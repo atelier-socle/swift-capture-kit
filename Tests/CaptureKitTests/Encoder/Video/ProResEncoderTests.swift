@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ProResEncoder")
+@Suite("ProResEncoder", .timeLimit(.minutes(1)))
 struct ProResEncoderTests {
 
     private func makeEncoder() -> ProResEncoder {

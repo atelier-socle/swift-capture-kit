@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("SampleBufferOutput")
+@Suite("SampleBufferOutput", .timeLimit(.minutes(1)))
 struct SampleBufferOutputTests {
 
     @Test("has sampleBuffer output type")

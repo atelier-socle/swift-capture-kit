@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("MicrophoneSource")
+@Suite("MicrophoneSource", .timeLimit(.minutes(1)))
 struct MicrophoneSourceTests {
 
     private func makeTestDevice(id: String = "test-device") -> AudioDeviceInfo {
@@ -60,6 +60,7 @@ struct MicrophoneSourceTests {
         await #expect(throws: CaptureError.self) {
             try await source.configure(.default)
         }
+        await source.stopCapture()
     }
 
     @Test("startCapture while capturing throws")
@@ -72,6 +73,7 @@ struct MicrophoneSourceTests {
         await #expect(throws: CaptureError.self) {
             _ = try await source.startCapture()
         }
+        await source.stopCapture()
     }
 
     @Test("stopCapture sets isCapturing to false")

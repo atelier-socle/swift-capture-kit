@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Audio Pipeline Integration")
+@Suite("Audio Pipeline Integration", .timeLimit(.minutes(1)))
 struct AudioPipelineIntegrationTests {
 
     private func makeBuffer(

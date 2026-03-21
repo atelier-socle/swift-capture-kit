@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Video Capture Showcase", .tags(.showcase))
+@Suite("Video Capture Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct VideoCaptureShowcaseTests {
 
     // MARK: - VideoResolution

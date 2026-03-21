@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CameraSource with DI")
+@Suite("CameraSource with DI", .timeLimit(.minutes(1)))
 struct CameraSourceIntegrationTests {
 
     private func makeSample(
@@ -34,6 +34,7 @@ struct CameraSourceIntegrationTests {
         _ = try await source.startCapture()
         let count = await engine.startCallCount
         #expect(count == 1)
+        await source.stopCapture()
     }
 
     @Test("stopCapture calls engine stopCapture")
@@ -72,6 +73,7 @@ struct CameraSourceIntegrationTests {
         _ = try await source.startCapture()
         let pos = await engine.lastPosition
         #expect(pos == .front)
+        await source.stopCapture()
     }
 
     @Test("passes deviceType to engine")
@@ -82,6 +84,7 @@ struct CameraSourceIntegrationTests {
         _ = try await source.startCapture()
         let dt = await engine.lastDeviceType
         #expect(dt == .wideAngle)
+        await source.stopCapture()
     }
 
     @Test("switchCamera delegates to engine")
@@ -132,6 +135,7 @@ struct CameraSourceIntegrationTests {
             seqs.append(frame.sequenceNumber)
         }
         #expect(seqs == [0, 1, 2])
+        await source.stopCapture()
     }
 
     @Test("engine error propagates on startCapture")

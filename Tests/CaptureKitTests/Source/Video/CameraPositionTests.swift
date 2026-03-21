@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CameraPosition")
+@Suite("CameraPosition", .timeLimit(.minutes(1)))
 struct CameraPositionTests {
 
     @Test("CaseIterable count is 3")

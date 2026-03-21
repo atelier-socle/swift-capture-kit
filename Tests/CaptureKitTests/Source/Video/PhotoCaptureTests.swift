@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PhotoCapture")
+@Suite("PhotoCapture", .timeLimit(.minutes(1)))
 struct PhotoCaptureTests {
 
     @Test("PhotoFormat CaseIterable count is 4")

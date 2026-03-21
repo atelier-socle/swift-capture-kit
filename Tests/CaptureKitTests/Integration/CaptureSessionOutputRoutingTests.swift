@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSession Output Routing")
+@Suite("CaptureSession Output Routing", .timeLimit(.minutes(1)))
 struct CaptureSessionOutputRoutingTests {
 
     @Test("output added during capture receives preparation")

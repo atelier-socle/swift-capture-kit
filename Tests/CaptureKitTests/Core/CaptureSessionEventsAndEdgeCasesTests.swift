@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSession Events & Edge Cases")
+@Suite("CaptureSession Events & Edge Cases", .timeLimit(.minutes(1)))
 struct CaptureSessionEventsAndEdgeCasesTests {
 
     // MARK: - Events
@@ -19,15 +19,18 @@ struct CaptureSessionEventsAndEdgeCasesTests {
         let eventStream = await session.events
         try await session.start()
 
-        var receivedStates: [CaptureSessionState] = []
-        for await event in eventStream {
-            if case .stateChanged(let state) = event {
-                receivedStates.append(state)
+        let events = await collectEvents(from: eventStream) { collected in
+            collected.contains { event in
+                if case .stateChanged(.capturing) = event { return true }
+                return false
             }
-            if receivedStates.contains(.capturing) { break }
         }
-        #expect(receivedStates.contains(.starting))
-        #expect(receivedStates.contains(.capturing))
+        let states = events.compactMap { event -> CaptureSessionState? in
+            if case .stateChanged(let state) = event { return state }
+            return nil
+        }
+        #expect(states.contains(.starting))
+        #expect(states.contains(.capturing))
         await session.stop()
     }
 
@@ -40,14 +43,17 @@ struct CaptureSessionEventsAndEdgeCasesTests {
         try await session.start()
         await session.stop()
 
-        var receivedStates: [CaptureSessionState] = []
-        for await event in eventStream {
-            if case .stateChanged(let state) = event {
-                receivedStates.append(state)
+        let events = await collectEvents(from: eventStream) { collected in
+            collected.contains { event in
+                if case .stateChanged(.idle) = event { return true }
+                return false
             }
-            if receivedStates.contains(.idle) { break }
         }
-        #expect(receivedStates.contains(.idle))
+        let states = events.compactMap { event -> CaptureSessionState? in
+            if case .stateChanged(let state) = event { return state }
+            return nil
+        }
+        #expect(states.contains(.idle))
     }
 
     @Test("emits outputAdded on addOutput")
@@ -57,16 +63,11 @@ struct CaptureSessionEventsAndEdgeCasesTests {
         try await session.addOutput(
             MockCaptureOutput(outputID: "test-out"))
 
-        var found = false
-        for await event in eventStream {
-            if case .outputAdded(let id) = event {
-                if id == "test-out" {
-                    found = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .outputAdded("test-out") = event { return true }
+            return false
         }
-        #expect(found)
+        #expect(event != nil)
     }
 
     @Test("emits outputRemoved on removeOutput")
@@ -77,16 +78,11 @@ struct CaptureSessionEventsAndEdgeCasesTests {
             MockCaptureOutput(outputID: "rm-out"))
         await session.removeOutput("rm-out")
 
-        var found = false
-        for await event in eventStream {
-            if case .outputRemoved(let id) = event {
-                if id == "rm-out" {
-                    found = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .outputRemoved("rm-out") = event { return true }
+            return false
         }
-        #expect(found)
+        #expect(event != nil)
     }
 
     @Test("emits bitrateChanged on updateVideoBitrate")
@@ -99,16 +95,11 @@ struct CaptureSessionEventsAndEdgeCasesTests {
         try await session.start()
         try await session.updateVideoBitrate(8_000_000)
 
-        var found = false
-        for await event in eventStream {
-            if case .bitrateChanged(_, let video) = event {
-                if video == 8_000_000 {
-                    found = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .bitrateChanged(_, 8_000_000) = event { return true }
+            return false
         }
-        #expect(found)
+        #expect(event != nil)
         await session.stop()
     }
 
@@ -122,16 +113,11 @@ struct CaptureSessionEventsAndEdgeCasesTests {
         try await session.switchAudioSource(
             MockAudioSource(sourceID: "switched"))
 
-        var found = false
-        for await event in eventStream {
-            if case .audioSourceReady(let id) = event {
-                if id == "switched" {
-                    found = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .audioSourceReady("switched") = event { return true }
+            return false
         }
-        #expect(found)
+        #expect(event != nil)
         await session.stop()
     }
 
@@ -145,16 +131,11 @@ struct CaptureSessionEventsAndEdgeCasesTests {
         try await session.switchVideoSource(
             MockVideoSource(sourceID: "switched"))
 
-        var found = false
-        for await event in eventStream {
-            if case .videoSourceReady(let id) = event {
-                if id == "switched" {
-                    found = true
-                    break
-                }
-            }
+        let event = await firstEvent(from: eventStream) { event in
+            if case .videoSourceReady("switched") = event { return true }
+            return false
         }
-        #expect(found)
+        #expect(event != nil)
         await session.stop()
     }
 

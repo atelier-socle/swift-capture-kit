@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioMeterMode")
+@Suite("AudioMeterMode", .timeLimit(.minutes(1)))
 struct AudioMeterModeTests {
 
     @Test("all 5 modes exist")

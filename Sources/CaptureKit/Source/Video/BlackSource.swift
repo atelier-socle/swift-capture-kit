@@ -41,6 +41,9 @@ public actor BlackSource: VideoSource {
     private let _frameStatisticsStream: AsyncStream<FrameStatisticsSample>
     private let _frameStatisticsContinuation: AsyncStream<FrameStatisticsSample>.Continuation
 
+    /// The active stream continuation, stored so stopCapture() can finish it.
+    private var _streamContinuation: AsyncStream<VideoFrame>.Continuation?
+
     /// The video formats supported by this source.
     public var supportedFormats: [VideoFormat] {
         [makeFormat(from: configuration)]
@@ -69,6 +72,11 @@ public actor BlackSource: VideoSource {
             exposureMode: .locked,
             whiteBalanceMode: .locked
         )
+    }
+
+    deinit {
+        _streamContinuation?.finish()
+        _frameStatisticsContinuation.finish()
     }
 
     /// Configures this source with the given video source configuration.
@@ -103,38 +111,44 @@ public actor BlackSource: VideoSource {
         let analyzer = statsAnalyzer
         let statsContinuation = _frameStatisticsContinuation
 
-        return AsyncStream { continuation in
-            let task = Task { @concurrent in
-                var sequenceNumber: Int64 = 0
+        let (stream, continuation) = AsyncStream.makeStream(of: VideoFrame.self)
+        _streamContinuation = continuation
 
-                while !Task.isCancelled {
-                    let frame = VideoFrame(
-                        data: Data(count: frameSize),
-                        format: format,
-                        timestamp: TimeInterval(sequenceNumber) * frameDuration,
-                        isKeyFrame: sequenceNumber % 30 == 0,
-                        sequenceNumber: sequenceNumber
-                    )
-                    continuation.yield(frame)
-                    await analyzer.processFrame(frame)
-                    if let latest = await analyzer.latestMetrics {
-                        statsContinuation.yield(latest)
-                    }
-                    sequenceNumber += 1
-                    try? await Task.sleep(for: .seconds(frameDuration))
+        let task = Task { @concurrent in
+            var sequenceNumber: Int64 = 0
+
+            while !Task.isCancelled {
+                let frame = VideoFrame(
+                    data: Data(count: frameSize),
+                    format: format,
+                    timestamp: TimeInterval(sequenceNumber) * frameDuration,
+                    isKeyFrame: sequenceNumber % 30 == 0,
+                    sequenceNumber: sequenceNumber
+                )
+                continuation.yield(frame)
+                await analyzer.processFrame(frame)
+                if let latest = await analyzer.latestMetrics {
+                    statsContinuation.yield(latest)
                 }
-                continuation.finish()
+                sequenceNumber += 1
+                try? await Task.sleep(for: .seconds(frameDuration))
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-            }
+            continuation.finish()
         }
+
+        continuation.onTermination = { _ in
+            task.cancel()
+        }
+
+        return stream
     }
 
     /// Stops generating black video frames.
     public func stopCapture() async {
         isCapturing = false
+        _streamContinuation?.finish()
+        _streamContinuation = nil
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

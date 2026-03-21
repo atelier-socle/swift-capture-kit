@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureSessionState")
+@Suite("CaptureSessionState", .timeLimit(.minutes(1)))
 struct CaptureSessionStateTests {
 
     @Test("All eight cases exist")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("H264Encoder")
+@Suite("H264Encoder", .timeLimit(.minutes(1)))
 struct H264EncoderTests {
 
     private func makeEncoder() -> H264Encoder {

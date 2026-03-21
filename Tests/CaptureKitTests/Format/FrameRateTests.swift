@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("FrameRate")
+@Suite("FrameRate", .timeLimit(.minutes(1)))
 struct FrameRateTests {
 
     @Test("value correctness for all named cases")

@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CapturePresetConfiguration")
+@Suite("CapturePresetConfiguration", .timeLimit(.minutes(1)))
 struct CapturePresetConfigurationTests {
 
     @Test("audio-only preset has no video codec")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("JPEGEncoderConfiguration")
+@Suite("JPEGEncoderConfiguration", .timeLimit(.minutes(1)))
 struct JPEGEncoderConfigurationTests {
     @Test("default quality is 0.85")
     func defaultQuality() {

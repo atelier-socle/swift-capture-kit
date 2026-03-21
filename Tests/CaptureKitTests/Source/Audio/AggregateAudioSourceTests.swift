@@ -7,7 +7,7 @@ import Testing
 
 #if os(macOS)
 
-    @Suite("AggregateAudioSource")
+    @Suite("AggregateAudioSource", .timeLimit(.minutes(1)))
     struct AggregateAudioSourceTests {
 
         private func makeTestDevice(id: String = "test-device") -> AudioDeviceInfo {

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AudioPreviewOutput")
+@Suite("AudioPreviewOutput", .timeLimit(.minutes(1)))
 struct AudioPreviewOutputTests {
 
     @Test("has audioPreview output type")

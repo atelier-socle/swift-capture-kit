@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("BroadcastIPCChannel")
+@Suite("BroadcastIPCChannel", .timeLimit(.minutes(1)))
 struct BroadcastIPCChannelTests {
 
     @Test("stores appGroupID")

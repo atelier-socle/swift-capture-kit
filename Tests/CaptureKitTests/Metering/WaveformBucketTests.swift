@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("WaveformBucket")
+@Suite("WaveformBucket", .timeLimit(.minutes(1)))
 struct WaveformBucketTests {
 
     @Test("stores min max rms")

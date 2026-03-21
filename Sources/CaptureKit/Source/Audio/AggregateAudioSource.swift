@@ -115,6 +115,8 @@ public actor AggregateAudioSource: AudioSource {
         self.captureEngine = captureEngine
     }
 
+    deinit { _audioLevelContinuation.finish() }
+
     /// Configures this source with the given audio source configuration.
     ///
     /// Validates that at least two devices are present before accepting configuration.
@@ -218,6 +220,7 @@ public actor AggregateAudioSource: AudioSource {
             destroyAggregateDevice()
         #endif
         isCapturing = false
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

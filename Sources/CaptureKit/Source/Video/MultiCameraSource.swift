@@ -112,6 +112,8 @@ public actor MultiCameraSource: VideoSource {
         self.engineFactory = { sharedEngine }
     }
 
+    deinit { _frameStatisticsContinuation.finish() }
+
     /// Configures this source with the given video source configuration.
     ///
     /// - Parameter configuration: The desired video source configuration.
@@ -176,6 +178,7 @@ public actor MultiCameraSource: VideoSource {
         }
         captureEngines.removeAll()
         isCapturing = false
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

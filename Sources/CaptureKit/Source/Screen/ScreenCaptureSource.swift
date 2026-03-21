@@ -157,6 +157,8 @@ public actor ScreenCaptureSource: VideoSource {
         }
     }
 
+    deinit { _frameStatisticsContinuation.finish() }
+
     /// Configures this source with the given video source configuration.
     ///
     /// - Parameter configuration: The desired video source configuration.
@@ -246,6 +248,7 @@ public actor ScreenCaptureSource: VideoSource {
     public func stopCapture() async {
         await videoProvider.stopCapture()
         isCapturing = false
+        _frameStatisticsContinuation.finish()
         await statsAnalyzer.stop()
     }
 

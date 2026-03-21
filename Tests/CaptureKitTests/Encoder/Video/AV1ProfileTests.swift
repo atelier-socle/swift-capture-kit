@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AV1Profile")
+@Suite("AV1Profile", .timeLimit(.minutes(1)))
 struct AV1ProfileTests {
     @Test("all cases are available")
     func allCases() {

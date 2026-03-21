@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PresetCategory")
+@Suite("PresetCategory", .timeLimit(.minutes(1)))
 struct PresetCategoryTests {
 
     @Test("all 8 categories exist")

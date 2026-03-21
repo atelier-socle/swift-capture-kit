@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("OpusEncoderConfiguration")
+@Suite("OpusEncoderConfiguration", .timeLimit(.minutes(1)))
 struct OpusEncoderConfigurationTests {
     @Test("default values")
     func defaultValues() {

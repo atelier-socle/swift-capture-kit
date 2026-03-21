@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("PixelFormat")
+@Suite("PixelFormat", .timeLimit(.minutes(1)))
 struct PixelFormatTests {
 
     @Test("CaseIterable count is 6")

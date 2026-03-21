@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("JPEGEncoder")
+@Suite("JPEGEncoder", .timeLimit(.minutes(1)))
 struct JPEGEncoderTests {
 
     private func makeEncoder() -> JPEGEncoder {

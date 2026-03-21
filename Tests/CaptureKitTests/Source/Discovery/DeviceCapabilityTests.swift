@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("DeviceCapability")
+@Suite("DeviceCapability", .timeLimit(.minutes(1)))
 struct DeviceCapabilityTests {
 
     @Test("all 8 capabilities exist")

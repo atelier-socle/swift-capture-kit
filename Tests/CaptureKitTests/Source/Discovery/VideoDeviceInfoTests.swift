@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoDeviceInfo")
+@Suite("VideoDeviceInfo", .timeLimit(.minutes(1)))
 struct VideoDeviceInfoTests {
 
     @Test("init stores all provided values")

@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("VideoToolboxEncoder via MockVideoEncoderProvider")
+@Suite("VideoToolboxEncoder via MockVideoEncoderProvider", .timeLimit(.minutes(1)))
 struct VideoToolboxEncoderTests {
 
     @Test("configure calls provider configure")

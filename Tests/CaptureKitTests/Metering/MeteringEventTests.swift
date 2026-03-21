@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("MeteringEvent")
+@Suite("MeteringEvent", .timeLimit(.minutes(1)))
 struct MeteringEventTests {
 
     @Test("audioLevel case carries sample")

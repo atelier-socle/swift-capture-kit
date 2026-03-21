@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("AACEncoderConfiguration")
+@Suite("AACEncoderConfiguration", .timeLimit(.minutes(1)))
 struct AACEncoderConfigurationTests {
     @Test("default values")
     func defaultValues() {

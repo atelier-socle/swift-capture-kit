@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("SourceCapabilities")
+@Suite("SourceCapabilities", .timeLimit(.minutes(1)))
 struct SourceCapabilitiesTests {
 
     @Test("available preset has correct values")

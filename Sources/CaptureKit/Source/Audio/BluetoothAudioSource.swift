@@ -134,6 +134,10 @@ public actor BluetoothAudioSource: AudioSource {
         self.captureEngine = captureEngine
     }
 
+    deinit {
+        _audioLevelContinuation.finish()
+    }
+
     /// Configures this source with the given audio source configuration.
     ///
     /// - Parameter configuration: The desired audio source configuration.
@@ -218,6 +222,7 @@ public actor BluetoothAudioSource: AudioSource {
         await captureEngine.stopCapture()
         isCapturing = false
         activeCodec = nil
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

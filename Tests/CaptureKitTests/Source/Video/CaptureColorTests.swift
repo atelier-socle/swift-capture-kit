@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureColor")
+@Suite("CaptureColor", .timeLimit(.minutes(1)))
 struct CaptureColorTests {
 
     @Test("init stores components correctly")

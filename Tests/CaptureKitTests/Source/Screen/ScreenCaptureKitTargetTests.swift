@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("ScreenCaptureKitTarget")
+@Suite("ScreenCaptureKitTarget", .timeLimit(.minutes(1)))
 struct ScreenCaptureKitTargetTests {
 
     @Test("display target equality")

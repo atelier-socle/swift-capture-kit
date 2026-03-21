@@ -71,6 +71,9 @@ public actor ToneSource: AudioSource {
     private let _audioLevelStream: AsyncStream<AudioLevelSample>
     private let _audioLevelContinuation: AsyncStream<AudioLevelSample>.Continuation
 
+    /// The active stream continuation, stored so stopCapture() can finish it.
+    private var _streamContinuation: AsyncStream<AudioBuffer>.Continuation?
+
     /// The audio formats supported by this source.
     public var supportedFormats: [AudioFormat] {
         [makeFormat(from: configuration)]
@@ -97,6 +100,11 @@ public actor ToneSource: AudioSource {
         let (stream, continuation) = AsyncStream.makeStream(of: AudioLevelSample.self)
         self._audioLevelStream = stream
         self._audioLevelContinuation = continuation
+    }
+
+    deinit {
+        _streamContinuation?.finish()
+        _audioLevelContinuation.finish()
     }
 
     /// Configures this source with the given audio source configuration.
@@ -137,57 +145,60 @@ public actor ToneSource: AudioSource {
         let meter = audioMeter
         let forwardTask = await startMeterForwarding(meter: meter)
 
-        return AsyncStream { continuation in
-            let task = Task { @concurrent in
-                var sequenceNumber: Int64 = 0
-                var globalSampleIndex: Int64 = 0
-                let bufferDuration = config.preferredBufferDuration
-                let startTime = ContinuousClock.now
+        let (stream, continuation) = AsyncStream.makeStream(of: AudioBuffer.self)
+        _streamContinuation = continuation
 
-                while !Task.isCancelled {
-                    let data = ToneSource.generateBuffer(
-                        waveform: waveform, frequency: frequency, amplitude: amplitude,
-                        sampleRate: sampleRate, samplesPerBuffer: samplesPerBuffer,
-                        channelCount: channelCount, bytesPerSample: bytesPerSample,
-                        globalSampleIndex: globalSampleIndex
-                    )
+        let task = Task { @concurrent in
+            var sequenceNumber: Int64 = 0
+            var globalSampleIndex: Int64 = 0
+            let bufferDuration = config.preferredBufferDuration
+            let startTime = ContinuousClock.now
 
-                    let timestamp = Double(globalSampleIndex) / sampleRate
-                    let buffer = AudioBuffer(
-                        data: data,
-                        format: format,
-                        timestamp: timestamp,
-                        duration: bufferDuration,
-                        sequenceNumber: sequenceNumber
-                    )
-                    continuation.yield(buffer)
-                    await meter.processBuffer(buffer)
-                    sequenceNumber += 1
-                    globalSampleIndex += Int64(samplesPerBuffer)
+            while !Task.isCancelled {
+                let data = ToneSource.generateBuffer(
+                    waveform: waveform, frequency: frequency, amplitude: amplitude,
+                    sampleRate: sampleRate, samplesPerBuffer: samplesPerBuffer,
+                    channelCount: channelCount, bytesPerSample: bytesPerSample,
+                    globalSampleIndex: globalSampleIndex
+                )
 
-                    // Sleep until the next buffer is due based on absolute
-                    // time. This prevents cumulative drift from Task.sleep
-                    // jitter and meter processing overhead.
-                    let nextDue = startTime + .seconds(timestamp + bufferDuration)
-                    let now = ContinuousClock.now
-                    if nextDue > now {
-                        try? await Task.sleep(until: nextDue, clock: .continuous)
-                    }
+                let timestamp = Double(globalSampleIndex) / sampleRate
+                let buffer = AudioBuffer(
+                    data: data,
+                    format: format,
+                    timestamp: timestamp,
+                    duration: bufferDuration,
+                    sequenceNumber: sequenceNumber
+                )
+                continuation.yield(buffer)
+                await meter.processBuffer(buffer)
+                sequenceNumber += 1
+                globalSampleIndex += Int64(samplesPerBuffer)
+
+                let nextDue = startTime + .seconds(timestamp + bufferDuration)
+                let now = ContinuousClock.now
+                if nextDue > now {
+                    try? await Task.sleep(until: nextDue, clock: .continuous)
                 }
-                continuation.finish()
-                forwardTask.cancel()
             }
-
-            continuation.onTermination = { _ in
-                task.cancel()
-                forwardTask.cancel()
-            }
+            continuation.finish()
+            forwardTask.cancel()
         }
+
+        continuation.onTermination = { _ in
+            task.cancel()
+            forwardTask.cancel()
+        }
+
+        return stream
     }
 
     /// Stops generating tone audio buffers.
     public func stopCapture() async {
         isCapturing = false
+        _streamContinuation?.finish()
+        _streamContinuation = nil
+        _audioLevelContinuation.finish()
         await audioMeter.stop()
     }
 

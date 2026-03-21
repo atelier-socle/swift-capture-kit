@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("QualityAdjustment")
+@Suite("QualityAdjustment", .timeLimit(.minutes(1)))
 struct QualityAdjustmentTests {
 
     @Test("stores from and to levels")

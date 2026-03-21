@@ -5,7 +5,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("CaptureError")
+@Suite("CaptureError", .timeLimit(.minutes(1)))
 struct CaptureErrorTests {
 
     @Test("Session errors have correct description text")

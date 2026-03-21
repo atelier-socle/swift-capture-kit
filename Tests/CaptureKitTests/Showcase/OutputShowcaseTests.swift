@@ -6,7 +6,7 @@ import Testing
 
 @testable import CaptureKit
 
-@Suite("Output Showcase", .tags(.showcase))
+@Suite("Output Showcase", .tags(.showcase), .timeLimit(.minutes(1)))
 struct OutputShowcaseTests {
 
     // MARK: - CaptureOutputType
