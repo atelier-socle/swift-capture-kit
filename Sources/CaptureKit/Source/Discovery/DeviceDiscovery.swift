@@ -112,6 +112,8 @@ public actor DeviceDiscovery {
         isMonitoring = false
         monitoringTask?.cancel()
         monitoringTask = nil
+        changeContinuation?.finish()
+        changeContinuation = nil
     }
 
     /// Force a refresh of the device list.

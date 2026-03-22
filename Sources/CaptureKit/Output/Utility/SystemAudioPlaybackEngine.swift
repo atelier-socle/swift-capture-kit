@@ -10,6 +10,10 @@
     /// Actor isolation protects the non-Sendable AVAudioEngine.
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     actor SystemAudioPlaybackEngine: AudioPlaybackProviding {
+        deinit {
+            audioEngine?.stop()
+        }
+
         private var audioEngine: AVAudioEngine?
         private var playerNode: AVAudioPlayerNode?
         private var playbackFormat: AVAudioFormat?
