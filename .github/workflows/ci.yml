@@ -6,9 +6,9 @@
 # Runs lint, build, test (with coverage), and platform builds.
 # Apple platforms only — no Linux, no tvOS, no watchOS.
 #
-# Note: swift test hangs on exit on macos-26 runners when Apple media
-# frameworks register CFRunLoop observers without hardware. The test step
-# runs in background with a kill after 120s, then verifies the summary.
+# Note: swift test hangs on exit on macos-26 runners due to a Swift
+# concurrency runtime bug (AVFoundation/CoreAudio related). Test and
+# coverage are separate steps — coverage runs best-effort in background.
 
 name: CI
 
@@ -64,34 +64,31 @@ jobs:
       - name: Coverage Report
         if: always()
         run: |
-          PROF_DATA=$(find .build -name "default.profdata" -type f 2>/dev/null | head -1)
           TEST_BIN=$(find .build -name "swift-capture-kitPackageTests" -type f ! -name "*.o" -not -path "*.dSYM*" 2>/dev/null | head -1)
-          if [ -z "$PROF_DATA" ]; then
-            if ls /tmp/capturekit-*.profraw 1>/dev/null 2>&1; then
-              xcrun llvm-profdata merge -sparse /tmp/capturekit-*.profraw -o /tmp/merged.profdata
-              PROF_DATA=/tmp/merged.profdata
-            fi
-          fi
-          if [ -n "$PROF_DATA" ] && [ -n "$TEST_BIN" ]; then
-            xcrun llvm-cov report "$TEST_BIN" \
-              -instr-profile="$PROF_DATA" \
-              -ignore-filename-regex='\.build|Tests'
+          # Check /tmp first (continuous mode), then .build (SwiftPM default)
+          if ls /tmp/capturekit-*.profraw 1>/dev/null 2>&1; then
+            echo "Found profraw in /tmp (continuous mode)"
+            xcrun llvm-profdata merge -sparse /tmp/capturekit-*.profraw -o /tmp/merged.profdata
+          elif ls .build/debug/codecov/*.profraw 1>/dev/null 2>&1; then
+            echo "Found profraw in .build (SwiftPM default)"
+            xcrun llvm-profdata merge -sparse .build/debug/codecov/*.profraw -o /tmp/merged.profdata
           else
-            echo "No profdata found"
+            echo "No profraw files found anywhere"
+            find .build -name "*.profraw" 2>/dev/null
+            ls /tmp/*.profraw 2>/dev/null
+          fi
+          if [ -f /tmp/merged.profdata ] && [ -n "$TEST_BIN" ]; then
+            xcrun llvm-cov report "$TEST_BIN" \
+              -instr-profile=/tmp/merged.profdata \
+              -ignore-filename-regex='\.build|Tests'
           fi
       - name: Generate lcov
         if: always()
         run: |
-          PROF_DATA=$(find .build -name "default.profdata" -type f 2>/dev/null | head -1)
           TEST_BIN=$(find .build -name "swift-capture-kitPackageTests" -type f ! -name "*.o" -not -path "*.dSYM*" 2>/dev/null | head -1)
-          if [ -z "$PROF_DATA" ]; then
-            if [ -f /tmp/merged.profdata ]; then
-              PROF_DATA=/tmp/merged.profdata
-            fi
-          fi
-          if [ -n "$PROF_DATA" ] && [ -n "$TEST_BIN" ]; then
+          if [ -f /tmp/merged.profdata ] && [ -n "$TEST_BIN" ]; then
             xcrun llvm-cov export "$TEST_BIN" \
-              -instr-profile="$PROF_DATA" \
+              -instr-profile=/tmp/merged.profdata \
               -format=lcov \
               -ignore-filename-regex='\.build|Tests' \
               > coverage.lcov
