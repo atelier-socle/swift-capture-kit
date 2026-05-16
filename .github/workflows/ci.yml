@@ -28,7 +28,7 @@ jobs:
     name: "Lint"
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install SwiftLint
         run: brew install swiftlint
       - name: Install swift-format
@@ -40,13 +40,21 @@ jobs:
 
   # ---------- Build & Test (macOS) ----------
   build-and-test:
-    name: "macOS (Swift 6.2)"
+    name: "macOS — Xcode ${{ matrix.xcode }} (Swift ${{ matrix.swift }})"
     runs-on: macos-26
     needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - xcode: "26.2"
+            swift: "6.2"
+          - xcode: "26.4"
+            swift: "6.3"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_26.2.app
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
       - name: Swift Version
         run: swift --version
       - name: Test with Coverage
@@ -62,7 +70,7 @@ jobs:
           cat /tmp/test-output.log
           grep "Test run with" /tmp/test-output.log | grep -q "pass"
       - name: Coverage Report
-        if: always()
+        if: always() && matrix.swift == '6.2'
         run: |
           TEST_BIN=$(find .build -name "swift-capture-kitPackageTests" -type f ! -name "*.o" -not -path "*.dSYM*" 2>/dev/null | head -1)
           # Check /tmp first (continuous mode), then .build (SwiftPM default)
@@ -83,7 +91,7 @@ jobs:
               -ignore-filename-regex='\.build|Tests'
           fi
       - name: Generate lcov
-        if: always()
+        if: always() && matrix.swift == '6.2'
         run: |
           TEST_BIN=$(find .build -name "swift-capture-kitPackageTests" -type f ! -name "*.o" -not -path "*.dSYM*" 2>/dev/null | head -1)
           if [ -f /tmp/merged.profdata ] && [ -n "$TEST_BIN" ]; then
@@ -94,8 +102,8 @@ jobs:
               > coverage.lcov
           fi
       - name: Upload to Codecov
-        if: always()
-        uses: codecov/codecov-action@v5
+        if: always() && matrix.swift == '6.2'
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.lcov
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -114,7 +122,7 @@ jobs:
           - platform: visionOS
             destination: "generic/platform=visionOS Simulator"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.2.app
       - name: Build for ${{ matrix.platform }}
